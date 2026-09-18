@@ -45,7 +45,12 @@ async function updateTelemetry(missionId, lat, lng, speed) {
  */
 async function getTelemetry(missionId) {
   const key = `mission:${missionId}:location`;
-  return await redis.hgetall(key);
+  try {
+    return await redis.hgetall(key);
+  } catch (error) {
+    console.error('Redis Fetch Error:', error);
+    return null;
+  }
 }
 
 module.exports = {
