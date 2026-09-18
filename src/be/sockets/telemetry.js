@@ -3,9 +3,10 @@ const { processTelemetryUpdate } = require('../services/eta-calculator');
 
 // --- Dev 3 Placeholder Dependencies ---
 // Dev 2 depends on these to extract intersection nodes and handle hazard rerouting.
-let anomalyDetector, osrmHelper;
+let anomalyDetector, osrmHelper, incidentEmitter;
 try {
   anomalyDetector = require('../services/anomaly-detector');
+  incidentEmitter = anomalyDetector.incidentEmitter;
   osrmHelper = require('../routes/osrm');
 } catch (e) {
   // Dev 3 files missing on this branch, ignoring.
@@ -14,6 +15,37 @@ try {
 
 const tmcClients = new Set();
 const hudClients = new Set();
+
+// Polyline decoder to extract intersection nodes dynamically from the route
+function decodePolyline(encoded) {
+  const coords = [];
+  let index = 0, lat = 0, lng = 0;
+  while (index < encoded.length) {
+    let shift = 0, result = 0, b;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lat += (result & 1) ? ~(result >> 1) : result >> 1;
+    shift = 0; result = 0;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lng += (result & 1) ? ~(result >> 1) : result >> 1;
+    coords.push([lng / 1e5, lat / 1e5]);
+  }
+  return coords;
+}
+
+function extractNodesFromPolyline(polyline) {
+  const coords = decodePolyline(polyline);
+  const nodes = [];
+  // Place a traffic light every 15 coordinates along the actual route
+  for (let i = 5; i < coords.length - 2; i += 15) {
+    nodes.push({
+      id: `node-${i}`,
+      coord: coords[i], // [lng, lat]
+      preempted: false,
+      passed: false
+    });
+  }
+  return nodes;
+}
 
 // Active mission state (in-memory for fast access during WS events)
 const activeMissions = {};
@@ -75,9 +107,7 @@ function initTelemetry(wss) {
           activeMissions[m.mission_id] = {
             path_polyline: m.path_polyline,
             priority: m.priority,
-            upcomingNodes: osrmHelper && osrmHelper.extractNodesFromPolyline ? osrmHelper.extractNodesFromPolyline(m.path_polyline) : [
-               { id: "node-1", coord: [-122.4194, 37.7749], preempted: false, passed: false }
-            ]
+            upcomingNodes: extractNodesFromPolyline(m.path_polyline)
           };
         }
         
@@ -112,10 +142,10 @@ function initTelemetry(wss) {
       if (parsed.type === 'OBSTRUCTION') {
         broadcast(tmcClients, parsed);
         
-        // Placeholder call to Dev 3's anomaly detector to trigger dynamic rerouting
-        // if (anomalyDetector && anomalyDetector.handleIncident) {
-        //   anomalyDetector.handleIncident(parsed.lat, parsed.lng, parsed.type);
-        // }
+        // Trigger Dev 3's dynamic rerouting logic
+        if (incidentEmitter) {
+          incidentEmitter.emit('OBSTRUCTION', parsed);
+        }
         
         return;
       }

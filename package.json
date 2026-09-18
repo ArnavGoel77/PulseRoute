@@ -16,7 +16,6 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "bugs": {
     "url": "https://github.com/ArnavGoel77/PulseRoute/issues"
   },
@@ -34,6 +33,7 @@
     "ws": "8.21.3"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "6.1.1",
     "autoprefixer": "10.6.1",
     "concurrently": "10.0.5",

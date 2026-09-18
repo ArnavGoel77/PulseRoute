@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: pulseroute-backend
+    runtime: node
+    buildCommand: npm install
+    startCommand: node src/be/server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: TOMTOM_API_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
