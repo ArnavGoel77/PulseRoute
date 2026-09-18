@@ -65,7 +65,7 @@ function decodePolyline(encoded) {
 /** Linear interpolation helper for D4-5 smooth movement. */
 const lerp = (a, b, t) => a + (b - a) * t;
 
-export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) {
+export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, recenterTrigger }) {
   const containerRef    = useRef(null);
   const mapRef          = useRef(null);
   const animFrameRef    = useRef(null);
@@ -83,6 +83,18 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
   // D4-7 roadblock mode ref (mirrors prop to avoid stale closure in map click handler)
   const roadblockActiveRef  = useRef(isRoadblockModeActive);
   useEffect(() => { roadblockActiveRef.current = isRoadblockModeActive; }, [isRoadblockModeActive]);
+
+  // Recenter trigger
+  useEffect(() => {
+    if (recenterTrigger && mapRef.current) {
+      // Find current center from ambulance layer or just use ambulance position
+      const source = mapRef.current.getSource('ambulance');
+      if (source && source._data && source._data.geometry) {
+        const coords = source._data.geometry.coordinates;
+        mapRef.current.flyTo({ center: coords, zoom: 16, speed: 1.5 });
+      }
+    }
+  }, [recenterTrigger]);
 
   // ── Map Initialization ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -284,20 +296,8 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
       lastTelemetryRef.current = Date.now();
     });
 
-    // MISSION_START → draw the route polyline on the map and generate intersections
-    const unsubMission = wsClient.on('MISSION_START', ({ path_polyline }) => {
-      if (!path_polyline || !mapRef.current) return;
-      const coords = decodePolyline(path_polyline);
-      mapRef.current.getSource('route')?.setData({
-        type: 'Feature',
-        geometry: { type: 'LineString', coordinates: coords }
-      });
-      // Fly to the start of the route
-      if (coords.length > 0) {
-        mapRef.current.flyTo({ center: coords[0], zoom: 13, speed: 1.2 });
-      }
-
-      // Generate nodes dynamically along the route (guarantee ~5 nodes)
+    // Node Generator Helper
+    const generateNodes = (coords) => {
       const features = [];
       const newSignalState = {};
       const step = Math.max(1, Math.floor(coords.length / 6));
@@ -318,6 +318,21 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
         features
       });
       _applySignalFilters(mapRef.current, signalStateRef.current);
+    };
+
+    // MISSION_START → draw the route polyline on the map and generate intersections
+    const unsubMission = wsClient.on('MISSION_START', ({ path_polyline }) => {
+      if (!path_polyline || !mapRef.current) return;
+      const coords = decodePolyline(path_polyline);
+      mapRef.current.getSource('route')?.setData({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: coords }
+      });
+      // Fly to the start of the route
+      if (coords.length > 0) {
+        mapRef.current.flyTo({ center: coords[0], zoom: 13, speed: 1.2 });
+      }
+      generateNodes(coords);
     });
 
     // ROUTE_UPDATED → update the route polyline on reroute
@@ -328,6 +343,8 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
         type: 'Feature',
         geometry: { type: 'LineString', coordinates: coords }
       });
+      // State Recovery / Detour fix: Ensure nodes are generated on refresh/detour
+      generateNodes(coords);
     });
 
     // INCIDENT_LOGGED → draw roadblock marker
@@ -346,6 +363,10 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
         type: 'FeatureCollection',
         features: newFeatures
       });
+      // Fix z-index by ensuring roadblock layer is drawn last
+      if (map.getLayer('roadblocks-layer')) {
+        map.moveLayer('roadblocks-layer');
+      }
     });
 
     // D4-6: SIGNAL_PREEMPT → snap node to GREEN via Map#setFilter
