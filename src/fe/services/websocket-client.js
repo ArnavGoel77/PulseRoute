@@ -132,6 +132,10 @@ class WebSocketClient {
     if (payload.speedMult !== undefined) {
       return this._emit('DEMO_SPEED_CONTROL', payload);
     }
+    // RESET_SIMULATION
+    if (payload.type === 'RESET_SIMULATION') {
+      return this._emit('RESET_SIMULATION', payload);
+    }
   }
 
   _emit(eventName, payload) {

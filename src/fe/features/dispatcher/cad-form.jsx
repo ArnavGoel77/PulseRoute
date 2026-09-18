@@ -146,7 +146,7 @@ export default function CadForm() {
       console.error(err);
       setFormError('Failed to contact backend for routing. Is the server running?');
     }
-    setLoading(false);
+    setIsDispatching(false);
   };
 
   const handleReset = () => {
@@ -267,9 +267,9 @@ export default function CadForm() {
 
               <div className="mt-2 shrink-0 flex flex-col gap-3">
                 {formError && <div className="p-3 bg-red-500/20 border border-red-500 rounded text-red-400 text-sm">{formError}</div>}
-                <button type="submit" disabled={loading}
+                <button type="submit" disabled={isDispatching}
                   className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold py-4 rounded transition-colors shadow-lg">
-                  {loading ? 'ROUTING...' : 'START MISSION'}
+                  {isDispatching ? 'ROUTING...' : 'START MISSION'}
                 </button>
                 <button type="button" onClick={handleReset}
                   className="w-full bg-red-900/30 hover:bg-red-900/60 border border-red-700 text-red-400 font-bold py-3 rounded transition-colors">
