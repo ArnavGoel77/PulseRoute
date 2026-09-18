@@ -1,10 +1,16 @@
-const { updateTelemetry } = require('../services/redis-client');
+const { updateTelemetry, getTelemetry } = require('../services/redis-client');
 const { processTelemetryUpdate } = require('../services/eta-calculator');
 
 // --- Dev 3 Placeholder Dependencies ---
 // Dev 2 depends on these to extract intersection nodes and handle hazard rerouting.
-const anomalyDetector = require('../services/anomaly-detector');
-const osrmHelper = require('../routes/osrm');
+let anomalyDetector, osrmHelper, incidentEmitter;
+try {
+  anomalyDetector = require('../services/anomaly-detector');
+  incidentEmitter = anomalyDetector.incidentEmitter;
+  osrmHelper = require('../routes/osrm');
+} catch (e) {
+  // Dev 3 files missing on this branch, ignoring.
+}
 // --------------------------------------
 
 const tmcClients = new Set();
@@ -29,10 +35,11 @@ function decodePolyline(encoded) {
 function extractNodesFromPolyline(polyline) {
   const coords = decodePolyline(polyline);
   const nodes = [];
-  // Place a traffic light every 15 coordinates along the actual route
-  for (let i = 5; i < coords.length - 2; i += 15) {
+  const step = Math.max(1, Math.floor(coords.length / 6));
+  let nodeId = 1;
+  for (let i = step; i < coords.length - 1; i += step) {
     nodes.push({
-      id: `node-${i}`,
+      id: `node-${nodeId++}`,
       coord: coords[i], // [lng, lat]
       preempted: false,
       passed: false
@@ -64,23 +71,47 @@ function initTelemetry(wss) {
       if (parsed.role) {
         if (parsed.role === 'TMC') tmcClients.add(ws);
         if (parsed.role === 'HUD') hudClients.add(ws);
+
+        // State Recovery Fix: When a client connects, instantly transmit all active missions
+        for (const [missionId, missionData] of Object.entries(activeMissions)) {
+          // 1. Send the route details
+          ws.send(JSON.stringify({
+            mission_id: missionId,
+            path_polyline: missionData.path_polyline,
+            priority: missionData.priority
+          }));
+
+          // 2. Fetch the absolute latest GPS state from Redis
+          const latestState = await getTelemetry(missionId);
+          if (latestState && Object.keys(latestState).length > 0) {
+            ws.send(JSON.stringify({
+              mission_id: missionId,
+              lat: parseFloat(latestState.lat),
+              lng: parseFloat(latestState.lng),
+              speed: parseFloat(latestState.speed)
+            }));
+          }
+        }
         return;
       }
 
       // We must determine the event type by strictly sniffing payload keys, 
       // as the spec forbids adding or removing keys (like a global 'type' key)
 
-      // 1. MISSION_START: { "mission_id": string, "path_polyline": string, "priority": string }
-      if (parsed.path_polyline !== undefined && parsed.priority !== undefined) {
-        const { mission_id, path_polyline, priority } = parsed;
+      // 1. MISSION_START: Can be a single object or an array of objects
+      const isMissionStart = (p) => p.path_polyline !== undefined && p.priority !== undefined;
+      
+      if (Array.isArray(parsed) ? parsed.length > 0 && isMissionStart(parsed[0]) : isMissionStart(parsed)) {
+        const missions = Array.isArray(parsed) ? parsed : [parsed];
         
-        activeMissions[mission_id] = {
-          path_polyline,
-          priority,
-          upcomingNodes: extractNodesFromPolyline(path_polyline)
-        };
+        for (const m of missions) {
+          activeMissions[m.mission_id] = {
+            path_polyline: m.path_polyline,
+            priority: m.priority,
+            upcomingNodes: extractNodesFromPolyline(m.path_polyline)
+          };
+        }
         
-        // Broadcast to TMC so they can see the new mission
         broadcast(tmcClients, parsed);
         return;
       }
@@ -112,16 +143,23 @@ function initTelemetry(wss) {
       if (parsed.type === 'OBSTRUCTION') {
         broadcast(tmcClients, parsed);
         
-        // Placeholder call to Dev 3's anomaly detector to trigger dynamic rerouting
-        // if (anomalyDetector && anomalyDetector.handleIncident) {
-        //   anomalyDetector.handleIncident(parsed.lat, parsed.lng, parsed.type);
-        // }
+        // Trigger Dev 3's dynamic rerouting logic
+        if (incidentEmitter) {
+          incidentEmitter.emit('OBSTRUCTION', parsed);
+        }
         
         return;
       }
 
       // 4. ROUTE_UPDATED: { "mission_id": string, "new_polyline": string }
       if (parsed.new_polyline !== undefined) {
+        broadcast(hudClients, parsed);
+        broadcast(tmcClients, parsed);
+        return;
+      }
+
+      // 5. DEMO_SPEED_CONTROL: { "speedMult": number, "paused": boolean }
+      if (parsed.speedMult !== undefined && parsed.paused !== undefined) {
         broadcast(hudClients, parsed);
         broadcast(tmcClients, parsed);
         return;

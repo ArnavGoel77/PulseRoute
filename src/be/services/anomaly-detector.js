@@ -6,9 +6,34 @@
 const turf = require('@turf/turf');
 const axios = require('axios');
 const EventEmitter = require('events');
+const { getTelemetry } = require('./redis-client');
 
 // Export an emitter so Dev 1's WebSocket server can listen for 'ROUTE_UPDATED' broadcasts
 const rerouteEmitter = new EventEmitter();
+
+// Export an emitter so Dev 1's WebSocket server can pass 'OBSTRUCTION' events to us
+const incidentEmitter = new EventEmitter();
+
+// Core BD2-5 Wire-Up: Catch the manual OBSTRUCTION event and immediately trigger a reroute!
+incidentEmitter.on('OBSTRUCTION', async (payload) => {
+  console.log(`[Anomaly Detector] Caught manual OBSTRUCTION event! Generating bypass...`);
+  
+  // The WS payload might just have { mission_id, lat, lng } or similar.
+  // We need to fetch current telemetry from Redis to know where the ambulance is right now.
+  const telemetry = await getTelemetry(payload.mission_id);
+  
+  if (telemetry && telemetry.lat) {
+    const current_location = { lat: parseFloat(telemetry.lat), lng: parseFloat(telemetry.lng) };
+    
+    // We assume the destination is passed in the payload or we use a fallback if not provided
+    const destination = payload.destination || { lat: 40.7812, lng: -73.9665 }; // Default to Central Park for hackathon if missing
+    
+    // Fire the Option A rerouting bypass!
+    await triggerReroute(payload.mission_id, current_location, destination);
+  } else {
+    console.warn(`[Anomaly Detector] Failed to find telemetry in Redis for mission ${payload.mission_id}. Cannot reroute.`);
+  }
+});
 
 /**
  * Detects if the given route polyline intersects with any TomTom incidents.
@@ -136,5 +161,6 @@ async function triggerReroute(mission_id, current_location, destination_coords) 
 module.exports = {
   detectAnomalies,
   triggerReroute,
-  rerouteEmitter
+  rerouteEmitter,
+  incidentEmitter
 };

@@ -32,11 +32,16 @@ export function useGPSSimulator() {
   const [eta, setEta] = useState('--');
   const [distanceLeft, setDistanceLeft] = useState('--');
   const [missionActive, setMissionActive] = useState(false);
+  
+  // MERGED STATES
   const [routeIndex, setRouteIndex] = useState(0);
   const [activeMissionId, setActiveMissionId] = useState(null);
   
   const [turnInstruction, setTurnInstruction] = useState('Follow Route');
   const [turnDistance, setTurnDistance] = useState('--');
+  
+  const [demoSpeed, setDemoSpeed] = useState(1);
+  const [demoPaused, setDemoPaused] = useState(false);
 
   // Listen for route updates
   useEffect(() => {
@@ -66,14 +71,22 @@ export function useGPSSimulator() {
       }
     });
 
+    const unsubDemoSpeed = wsClient.on('DEMO_SPEED_CONTROL', ({ speedMult, paused }) => {
+      if (speedMult !== undefined) setDemoSpeed(speedMult);
+      if (paused !== undefined) setDemoPaused(paused);
+    });
+
     return () => {
       unsubMission();
       unsubRoute();
+      unsubDemoSpeed();
     };
-  }, [currentLocation, activeMissionId]); // Depend on state so closure has latest values
+  }, [currentLocation, activeMissionId]); 
   
   useEffect(() => {
-    if (!missionActive || !activeMissionId) return;
+    if (!missionActive || !activeMissionId || demoPaused) return;
+
+    const intervalTime = 1000 / demoSpeed;
 
     const interval = setInterval(() => {
       if (route.length === 0 || routeIndex >= route.length - 1) {
@@ -165,10 +178,10 @@ export function useGPSSimulator() {
         lng: nextLoc[0], 
         speed: simSpeedMph 
       });
-    }, 1000); // 1Hz updates as per spec
+    }, intervalTime); 
 
     return () => clearInterval(interval);
-  }, [route, routeIndex, missionActive, activeMissionId]);
+  }, [route, routeIndex, missionActive, activeMissionId, demoSpeed, demoPaused]);
 
   return {
     currentLocation,
