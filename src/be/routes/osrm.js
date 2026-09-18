@@ -151,4 +151,97 @@ router.get('/', async (req, res) => {
   }
 });
 
+/**
+ * GET /legs
+ * Returns 3 separate route legs for 3-phase ambulance routing:
+ *   leg_1: base → incident (ambulance drives to scene)
+ *   leg_2: incident → hospital (transport patient)
+ *   leg_3: hospital → base (return to standby)
+ *
+ * Query params: incident_lat, incident_lng, hospital_lat, hospital_lng, unit_id
+ * base_lat/base_lng auto-fetched from Redis using unit_id (set in Driver HUD)
+ */
+router.get('/legs', async (req, res) => {
+  try {
+    const { incident_lat, incident_lng, hospital_lat, hospital_lng, unit_id } = req.query;
+
+    if (!incident_lat || !incident_lng || !hospital_lat || !hospital_lng) {
+      return res.status(400).json({ error: 'missing_coordinates', required: 'incident_lat, incident_lng, hospital_lat, hospital_lng' });
+    }
+
+    // Fetch base location from Redis
+    let base_lat = null, base_lng = null;
+    if (unit_id && redis && typeof redis.hgetall === 'function') {
+      try {
+        const baseData = await redis.hgetall(`unit:${unit_id}:base`);
+        if (baseData && baseData.base_lat && baseData.base_lng) {
+          base_lat = baseData.base_lat;
+          base_lng = baseData.base_lng;
+        }
+      } catch (err) {
+        console.warn('Failed to fetch unit base from Redis:', err);
+      }
+    }
+
+    // If no base in Redis, use a Mumbai default (Colaba)
+    if (!base_lat || !base_lng) {
+      base_lat = '18.9220';
+      base_lng = '72.8347';
+      console.log('[OSRM Legs] No base in Redis, using Mumbai default');
+    }
+
+    const fetchLeg = async (fromLng, fromLat, toLng, toLat, legName) => {
+      const url = `http://router.project-osrm.org/route/v1/driving/${fromLng},${fromLat};${toLng},${toLat}?overview=full&geometries=polyline`;
+      try {
+        const resp = await axios.get(url, { timeout: 8000 });
+        if (resp.data.code === 'Ok' && resp.data.routes.length > 0) {
+          const route = resp.data.routes[0];
+          return {
+            polyline: route.geometry,
+            distance_meters: Math.round(route.distance),
+            duration_seconds: Math.round(route.duration)
+          };
+        }
+      } catch (e) {
+        console.error(`[OSRM Legs] Failed to fetch ${legName}:`, e.message);
+      }
+      return null;
+    };
+
+    // Fetch all 3 legs in parallel
+    const [leg1, leg2, leg3] = await Promise.all([
+      fetchLeg(base_lng, base_lat, incident_lng, incident_lat, 'leg1: base→incident'),
+      fetchLeg(incident_lng, incident_lat, hospital_lng, hospital_lat, 'leg2: incident→hospital'),
+      fetchLeg(hospital_lng, hospital_lat, base_lng, base_lat, 'leg3: hospital→base'),
+    ]);
+
+    if (!leg1 || !leg2 || !leg3) {
+      return res.status(502).json({ error: 'osrm_failed', message: 'One or more route legs could not be fetched from OSRM' });
+    }
+
+    return res.json({
+      leg_to_incident: leg1.polyline,
+      leg_to_hospital: leg2.polyline,
+      leg_to_base: leg3.polyline,
+      distances: {
+        to_incident: leg1.distance_meters,
+        to_hospital: leg2.distance_meters,
+        to_base: leg3.distance_meters
+      },
+      durations: {
+        to_incident: leg1.duration_seconds,
+        to_hospital: leg2.duration_seconds,
+        to_base: leg3.duration_seconds
+      },
+      base_coords: { lat: parseFloat(base_lat), lng: parseFloat(base_lng) },
+      incident_coords: { lat: parseFloat(incident_lat), lng: parseFloat(incident_lng) },
+      hospital_coords: { lat: parseFloat(hospital_lat), lng: parseFloat(hospital_lng) }
+    });
+
+  } catch (error) {
+    console.error('OSRM Legs Error:', error);
+    return res.status(500).json({ error: 'internal_server_error' });
+  }
+});
+
 module.exports = router;

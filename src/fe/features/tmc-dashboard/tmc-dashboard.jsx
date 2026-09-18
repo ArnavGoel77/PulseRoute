@@ -33,7 +33,7 @@ export default function TmcCommandDashboard() {
 
   // ── WebSocket Subscriptions ───────────────────────────────────────────────
   useEffect(() => {
-    wsClient.connect();
+    wsClient.connect(true);
 
     const addEvent = (text, dim = false) => {
       const time = new Date().toUTCString().split(' ')[4];
