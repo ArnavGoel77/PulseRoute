@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import wsClient from '../../services/websocket-client';
 
 // A mock polyline to traverse (Mumbai)
@@ -31,6 +31,9 @@ export function useGPSSimulator() {
   const [eta, setEta] = useState('4m 20s');
   const [distanceLeft, setDistanceLeft] = useState('2.1 mi');
   const [missionActive, setMissionActive] = useState(false);
+  const [demoSpeed, setDemoSpeed] = useState(1);
+  const [demoPaused, setDemoPaused] = useState(false);
+  const indexRef = useRef(0);
 
   // Listen for route updates
   useEffect(() => {
@@ -48,37 +51,45 @@ export function useGPSSimulator() {
         const coords = decodePolyline(new_polyline);
         setRoute(coords);
         setCurrentLocation(coords[0]);
+        indexRef.current = 0; // Reset index on reroute
       }
+    });
+
+    const unsubDemoSpeed = wsClient.on('DEMO_SPEED_CONTROL', ({ speedMult, paused }) => {
+      if (speedMult !== undefined) setDemoSpeed(speedMult);
+      if (paused !== undefined) setDemoPaused(paused);
     });
 
     return () => {
       unsubMission();
       unsubRoute();
+      unsubDemoSpeed();
     };
   }, []);
   
   useEffect(() => {
-    if (!missionActive) return;
+    if (!missionActive || demoPaused) return;
 
-    let index = 0;
+    const intervalTime = 1000 / demoSpeed;
+
     const interval = setInterval(() => {
       if (route.length === 0) return;
-      index = (index + 1) % route.length;
-      setCurrentLocation(route[index]);
+      indexRef.current = (indexRef.current + 1) % route.length;
+      setCurrentLocation(route[indexRef.current]);
       
       const simSpeed = Math.floor(Math.random() * 20) + 30; // 30-50 mph
       setSpeed(simSpeed);
       
       wsClient.send({ 
         mission_id: 'M-042', 
-        lat: route[index][1], 
-        lng: route[index][0], 
+        lat: route[indexRef.current][1], 
+        lng: route[indexRef.current][0], 
         speed: simSpeed 
       });
-    }, 1000); // 1Hz updates as per spec
+    }, intervalTime); // 1Hz scaled by demoSpeed
 
     return () => clearInterval(interval);
-  }, [route, missionActive]);
+  }, [route, missionActive, demoSpeed, demoPaused]);
 
   return {
     currentLocation,

@@ -29,10 +29,11 @@ function decodePolyline(encoded) {
 function extractNodesFromPolyline(polyline) {
   const coords = decodePolyline(polyline);
   const nodes = [];
-  // Place a traffic light every 15 coordinates along the actual route
-  for (let i = 5; i < coords.length - 2; i += 15) {
+  const step = Math.max(1, Math.floor(coords.length / 6));
+  let nodeId = 1;
+  for (let i = step; i < coords.length - 1; i += step) {
     nodes.push({
-      id: `node-${i}`,
+      id: `node-${nodeId++}`,
       coord: coords[i], // [lng, lat]
       preempted: false,
       passed: false
@@ -122,6 +123,13 @@ function initTelemetry(wss) {
 
       // 4. ROUTE_UPDATED: { "mission_id": string, "new_polyline": string }
       if (parsed.new_polyline !== undefined) {
+        broadcast(hudClients, parsed);
+        broadcast(tmcClients, parsed);
+        return;
+      }
+
+      // 5. DEMO_SPEED_CONTROL: { "speedMult": number, "paused": boolean }
+      if (parsed.speedMult !== undefined && parsed.paused !== undefined) {
         broadcast(hudClients, parsed);
         broadcast(tmcClients, parsed);
         return;
