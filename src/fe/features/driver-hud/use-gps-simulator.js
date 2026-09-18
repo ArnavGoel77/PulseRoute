@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
+import wsClient from '../../services/websocket-client';
 
-// A mock polyline to traverse
+// A mock polyline to traverse (Mumbai)
 const MOCK_POLYLINE = [
-  [40.7128, -74.0060],
-  [40.7130, -74.0065],
-  [40.7135, -74.0070],
+  [72.8234, 18.9221],
+  [72.8311, 18.9300],
+  [72.8347, 18.9388],
+  [72.8277, 18.9451]
 ];
 
 export function useGPSSimulator() {
@@ -14,20 +16,21 @@ export function useGPSSimulator() {
   const [distanceLeft, setDistanceLeft] = useState('1.2 KM');
   
   useEffect(() => {
-    // Simulated traversal logic
+    let index = 0;
     const interval = setInterval(() => {
-      // In a real implementation, this would step through the polyline
-      // based on the timestamp and emit 'TELEMETRY_UPDATE' WS events.
+      index = (index + 1) % MOCK_POLYLINE.length;
+      setCurrentLocation(MOCK_POLYLINE[index]);
       
-      // Stub WebSocket emission
-      // ws.send(JSON.stringify({ 
-      //   event: 'TELEMETRY_UPDATE', 
-      //   payload: { mission_id: 'M-017', lat: currentLocation[0], lng: currentLocation[1], speed }
-      // }));
+      wsClient.send({ 
+        mission_id: 'M-042', 
+        lat: MOCK_POLYLINE[index][1], 
+        lng: MOCK_POLYLINE[index][0], 
+        speed 
+      });
     }, 1000); // 1Hz updates as per spec
 
     return () => clearInterval(interval);
-  }, [currentLocation, speed]);
+  }, [speed]);
 
   return {
     currentLocation,

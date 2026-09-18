@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
+import wsClient from '../../services/websocket-client';
 
-// NYC Bounding Box
+// Mumbai Bounding Box (Demo Area)
 const NYC_BOUNDS = {
-  minLat: 40.47,
-  maxLat: 40.91,
-  minLng: -74.25,
-  maxLng: -73.70
+  minLat: 18.8,
+  maxLat: 19.3,
+  minLng: 72.7,
+  maxLng: 73.1
 };
 
 export default function CadForm() {
@@ -36,21 +37,35 @@ export default function CadForm() {
     setFormError('');
 
     if (!origin || !destination) {
-      setFormError('Origin and Destination are required.');
+      setFormError('Origin and Destination are required. Format: lat, lng');
       return;
     }
 
-    if (!validateCoordinates(origin)) {
-      setFormError('Origin coordinates are invalid or outside NYC bounding box (Lat: 40.47-40.91, Lng: -74.25 to -73.70).');
-      return;
-    }
+    wsClient.connect();
 
-    if (!validateCoordinates(destination)) {
-      setFormError('Destination coordinates are invalid or outside NYC bounding box.');
-      return;
-    }
+    const [start_lat, start_lng] = origin.split(',').map(s => s.trim());
+    const [end_lat, end_lng] = destination.split(',').map(s => s.trim());
 
-    alert(`MISSION_START WebSocket event emitted for Priority: ${priority}`);
+    // Hit the backend OSRM proxy
+    fetch(`/api/route?start_lat=${start_lat}&start_lng=${start_lng}&end_lat=${end_lat}&end_lng=${end_lng}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) {
+          setFormError(`Routing error: ${data.error}`);
+          return;
+        }
+        
+        wsClient.send({
+          mission_id: 'M-042',
+          path_polyline: data.path_polyline,
+          priority: priority
+        });
+        alert('MISSION_START emitted! Switch to TMC Dashboard.');
+      })
+      .catch(err => {
+        console.error(err);
+        setFormError('Failed to contact backend for routing.');
+      });
   };
 
   return (
