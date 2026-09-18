@@ -10,15 +10,36 @@ const { redis } = require('../services/redis-client');
 const router = express.Router();
 
 /**
- * PLACEHOLDER: Polyline Decoder (Precision 5)
- * TODO: Implement actual decoding algorithm or use @mapbox/polyline later.
+ * Polyline Decoder (Precision 5)
+ * Decodes standard OSRM polyline strings into an array of [lat, lng] pairs.
  */
-function decodePolyline(polylineStr, startLat, startLng, endLat, endLng) {
-  // Returning a mock raw coordinate array [lat, lng] for spatial mathematics
-  return [
-    [parseFloat(startLat), parseFloat(startLng)],
-    [parseFloat(endLat), parseFloat(endLng)]
-  ];
+function decodePolyline(encoded) {
+  const coords = [];
+  let index = 0, lat = 0, lng = 0;
+
+  while (index < encoded.length) {
+    let shift = 0, result = 0, b;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    const dlat = ((result & 1) ? ~(result >> 1) : (result >> 1));
+    lat += dlat;
+
+    shift = 0; result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    const dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
+    lng += dlng;
+
+    // Push as [lat, lng]
+    coords.push([lat / 1e5, lng / 1e5]);
+  }
+  return coords;
 }
 /**
  * GET /
@@ -70,16 +91,16 @@ router.get('/', async (req, res) => {
     // 3. Format Response Payload (Strict snake_case)
     const route_payload = {
       path_polyline: primary_route.geometry,
-      decoded_path: decodePolyline(primary_route.geometry, start_lat, start_lng, end_lat, end_lng),
+      decoded_path: decodePolyline(primary_route.geometry),
       distance_meters: primary_route.distance,
       duration_seconds: primary_route.duration
     };
 
-    // 4. Save to Redis Cache (Expire after 1 hour / 3600 seconds)
+    // 4. Save to Redis Cache (Expire after 30 seconds)
     try {
       if (redis && typeof redis.set === 'function') {
         // Upstash Redis automatically handles JSON serialization
-        await redis.set(cache_key, route_payload, { ex: 3600 });
+        await redis.set(cache_key, route_payload, { ex: 30 });
       }
     } catch (cache_err) {
       console.warn('Redis cache write error:', cache_err);

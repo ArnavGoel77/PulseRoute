@@ -25,8 +25,49 @@ incidentEmitter.on('OBSTRUCTION', async (payload) => {
   if (telemetry && telemetry.lat) {
     const current_location = { lat: parseFloat(telemetry.lat), lng: parseFloat(telemetry.lng) };
     
-    // We assume the destination is passed in the payload or we use a fallback if not provided
-    const destination = payload.destination || { lat: 40.7812, lng: -73.9665 }; // Default to Central Park for hackathon if missing
+    // Extract the actual destination from the active mission telemetry / OSRM cache!
+    let destination = payload.destination;
+    
+    if (!destination) {
+      try {
+        const { redis } = require('./redis-client');
+        const keys = await redis.keys('osrm_route:*');
+        if (keys && keys.length > 0) {
+          let closestDist = Infinity;
+          let bestDest = null;
+          
+          for (const key of keys) {
+            const parts = key.split(':');
+            if (parts.length === 3) {
+              const startParts = parts[1].split(',');
+              const destParts = parts[2].split(',');
+              
+              const sLat = parseFloat(startParts[0]);
+              const sLng = parseFloat(startParts[1]);
+              
+              const startPt = turf.point([sLng, sLat]);
+              const currentPt = turf.point([current_location.lng, current_location.lat]);
+              
+              const dist = turf.distance(startPt, currentPt);
+              if (dist < closestDist) {
+                closestDist = dist;
+                bestDest = { lat: parseFloat(destParts[0]), lng: parseFloat(destParts[1]) };
+              }
+            }
+          }
+          if (bestDest) {
+            destination = bestDest;
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to extract destination from Redis cache:', e.message);
+      }
+    }
+    
+    // Fallback to a central Mumbai location if extraction entirely fails
+    if (!destination) {
+      destination = { lat: 19.0760, lng: 72.8777 }; 
+    }
     
     // Fire the Option A rerouting bypass!
     await triggerReroute(payload.mission_id, current_location, destination);
