@@ -152,6 +152,13 @@ function initTelemetry(wss) {
 
       // 4. ROUTE_UPDATED: { "mission_id": string, "new_polyline": string }
       if (parsed.new_polyline !== undefined) {
+        const { mission_id, new_polyline } = parsed;
+        if (mission_id && activeMissions[mission_id]) {
+          // Persist the detour polyline to memory for State Recovery
+          activeMissions[mission_id].path_polyline = new_polyline;
+          // Recalculate dynamic nodes along the new route
+          activeMissions[mission_id].upcomingNodes = extractNodesFromPolyline(new_polyline);
+        }
         broadcast(hudClients, parsed);
         broadcast(tmcClients, parsed);
         return;
