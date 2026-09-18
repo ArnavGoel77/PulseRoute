@@ -1,28 +1,35 @@
 /**
- * Map Engine — Phase-Aware Route Display
+ * PulseRoute Map Engine — Multi-Mission Fleet Visualization
  *
- * - Displays only the CURRENT leg's route (switches on PHASE_CHANGE)
- * - Traffic lights are generated from the current route leg
- * - Roadblocks are rendered as red circles
- * - Ambulance smoothly interpolates between GPS ticks
+ * Features:
+ * - Multi-mission routes with distinct colors per ambulance
+ * - Google Maps-style animated destination pin marker
+ * - Phase-aware preemption (disabled on to_base leg)
+ * - Driver icon layer for all registered units
+ * - Roadblocks rendered at top z-index
+ * - Smooth 60fps ambulance interpolation per mission
  */
 
 import React, { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import wsClient from '../../services/websocket-client';
+import { driverStore } from '../../services/driver-store';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
-const MUMBAI_CENTER = [72.8777, 19.0176]; // [lng, lat]
-const TMC_ZOOM    = 11.5;
-const TMC_PITCH   = 45;
-const TMC_BEARING = -10;
-
+const MUMBAI_CENTER = [72.8777, 19.0176];
+const TMC_ZOOM     = 11.5;
+const TMC_PITCH    = 45;
+const TMC_BEARING  = -10;
 const DARK_MATTER_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
-// Ambulance SVG base64
-const AMBULANCE_SVG_B64 = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4NCiAgPCEtLSBWZWhpY2xlIEJvZHkgLS0+DQogIDxyZWN0IHg9IjgiIHk9IjI0IiB3aWR0aD0iNDgiIGhlaWdodD0iMjQiIHJ4PSI0IiBmaWxsPSIjZmZmZmZmIi8+DQogIDxyZWN0IHg9IjQyIiB5PSIzMiIgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2IiByeD0iMiIgZmlsbD0iI2UwZTBlMCIvPg0KICA8IS0tIFdpbmRvd3MgLS0+DQogIDxyZWN0IHg9IjQ0IiB5PSIyNiIgd2lkdGg9IjEwIiBoZWlnaHQ9IjgiIHJ4PSIxIiBmaWxsPSIjNGFkZTgwIi8+DQogIDwhLS0gQ3Jvc3MgLS0+DQogIDxyZWN0IHg9IjIyIiB5PSIyOCIgd2lkdGg9IjQiIGhlaWdodD0iMTYiIHJ4PSIxIiBmaWxsPSIjZWY0NDQ0Ii8+DQogIDxyZWN0IHg9IjE2IiB5PSIzNCIgd2lkdGg9IjE2IiBoZWlnaHQ9IjQiIHJ4PSIxIiBmaWxsPSIjZWY0NDQ0Ii8+DQogIDwhLS0gV2hlZWxzIC0tPg0KICA8Y2lyY2xlIGN4PSIxOCIgY3k9IjQ4IiByPSI2IiBmaWxsPSIjMWYyOTM3Ii8+DQogIDxjaXJjbGUgY3g9IjQ2IiBjeT0iNDgiIHI9IjYiIGZpbGw9IiMxZjI5MzciLz4NCiAgPGNpcmNsZSBjeD0iMTgiIGN5PSI0OCIgcj0iMyIgZmlsbD0iIzljYTNhZiIvPg0KICA8Y2lyY2xlIGN4PSI0NiIgY3k9IjQ4IiByPSIzIiBmaWxsPSIjOWNhM2FmIi8+DQogIDwhLS0gTGlnaHRiYXIgLS0+DQogIDxyZWN0IHg9IjE2IiB5PSIyMCIgd2lkdGg9IjgiIGhlaWdodD0iNCIgcng9IjIiIGZpbGw9IiNlZjQ0NDQiLz4NCiAgPHJlY3QgeD0iMjYiIHk9IjIwIiB3aWR0aD0iOCIgaGVpZ2h0PSI0IiByeD0iMiIgZmlsbD0iIzNiODJmNiIvPg0KPC9zdmc+DQo=';
+// Distinct colors per mission slot (cycles if more than 6)
+const MISSION_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+function getMissionColor(index) {
+  return MISSION_COLORS[index % MISSION_COLORS.length];
+}
 
 function decodePolyline(encoded) {
   const coords = [];
@@ -34,7 +41,7 @@ function decodePolyline(encoded) {
     shift = 0; result = 0;
     do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
     lng += (result & 1) ? ~(result >> 1) : result >> 1;
-    coords.push([lng / 1e5, lat / 1e5]); // [lng, lat]
+    coords.push([lng / 1e5, lat / 1e5]);
   }
   return coords;
 }
@@ -42,79 +49,145 @@ function decodePolyline(encoded) {
 const lerp = (a, b, t) => a + (b - a) * t;
 
 const makeIdFilter = (ids) =>
-  ids.length > 0 ? ['in', 'intersection_id', ...ids] : ['==', 'intersection_id', '__NONE__'];
+  ids.length > 0
+    ? ['in', 'intersection_id', ...ids]
+    : ['==', 'intersection_id', '__NONE__'];
 
-// Generate intersection node features from a decoded coord array
-function generateNodeFeatures(coords) {
-  const features = [];
-  const step = Math.max(1, Math.floor(coords.length / 8));
-  let nodeId = 1;
-  for (let i = step; i < coords.length - 1; i += step) {
-    features.push({
-      type: 'Feature',
-      properties: { intersection_id: `node-${nodeId}`, signal_phase: 'RED' },
-      geometry: { type: 'Point', coordinates: coords[i] }
-    });
-    nodeId++;
-  }
-  return features;
+// Creates the destination pin HTML element (Google Maps style)
+function createDestinationPinEl(color = '#e03131') {
+  const el = document.createElement('div');
+  el.style.cssText = `
+    width: 32px; height: 40px;
+    position: relative;
+    cursor: pointer;
+  `;
+  el.innerHTML = `
+    <svg viewBox="0 0 32 40" width="32" height="40" xmlns="http://www.w3.org/2000/svg">
+      <path d="M16 0C9.37 0 4 5.37 4 12c0 9 12 28 12 28s12-19 12-28c0-6.63-5.37-12-12-12z" fill="${color}"/>
+      <circle cx="16" cy="12" r="5" fill="white" opacity="0.9"/>
+    </svg>
+    <div style="
+      position: absolute; bottom: -6px; left: 50%;
+      transform: translateX(-50%);
+      width: 12px; height: 4px;
+      background: rgba(0,0,0,0.3);
+      border-radius: 50%;
+      filter: blur(2px);
+    "></div>
+  `;
+  return el;
 }
 
-export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, recenterTrigger }) {
-  const containerRef   = useRef(null);
-  const mapRef         = useRef(null);
-  const animFrameRef   = useRef(null);
-  const flashTimerRef  = useRef(null);
+// Creates driver icon element
+function createDriverIconEl(driverId, color) {
+  const el = document.createElement('div');
+  el.style.cssText = `
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: ${color};
+    border: 2.5px solid white;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700; color: white;
+    font-family: monospace;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 0 2px;
+  `;
+  el.textContent = driverId.length > 5 ? driverId.slice(0, 5) : driverId;
+  el.title = driverId;
+  return el;
+}
 
-  const prevPosRef        = useRef(MUMBAI_CENTER);
-  const targetPosRef      = useRef(MUMBAI_CENTER);
-  const lastTelemetryRef  = useRef(Date.now());
+export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, recenterTrigger, watchMissionId }) {
+  const containerRef         = useRef(null);
+  const mapRef               = useRef(null);
+  const mapLoadedRef         = useRef(false);
 
-  const signalStateRef    = useRef({});
-  const orangeTimersRef   = useRef({});
-  const roadblocksRef     = useRef({ type: 'FeatureCollection', features: [] });
-  const roadblockActiveRef = useRef(isRoadblockModeActive);
+  // Per-mission tracking
+  const missionIndexRef      = useRef({}); // mission_id -> color index
+  const missionCountRef      = useRef(0);
+  const missionPhaseRef      = useRef({}); // mission_id -> current_phase
+  const missionMarkersRef    = useRef({}); // mission_id -> mapboxgl.Marker (destination pin)
+  const animStateRef         = useRef({}); // mission_id -> { prev, target, lastTime }
 
-  // Store all 3 legs so we can switch on PHASE_CHANGE
-  const legsRef = useRef({ to_incident: [], to_hospital: [], to_base: [] });
-  const mapReadyRef = useRef(false);
-  const pendingMissionRef = useRef(null);
+  // Signal state
+  const signalStateRef       = useRef({});
+  const orangeTimersRef      = useRef({});
+  const flashTimerRef        = useRef(null);
 
+  // Driver markers
+  const driverMarkersRef     = useRef({}); // driver_id -> mapboxgl.Marker
+
+  // Roadblock mode ref
+  const roadblockActiveRef   = useRef(isRoadblockModeActive);
   useEffect(() => { roadblockActiveRef.current = isRoadblockModeActive; }, [isRoadblockModeActive]);
 
+  // Recenter effect
   useEffect(() => {
-    if (recenterTrigger && mapRef.current) {
-      mapRef.current.flyTo({ center: targetPosRef.current, zoom: 16, speed: 1.5 });
+    if (!recenterTrigger || !mapRef.current) return;
+    // Find the ambulance position for the watched mission
+    const state = animStateRef.current[watchMissionId];
+    if (state?.target) {
+      mapRef.current.flyTo({ center: state.target, zoom: 15, speed: 1.5 });
     }
-  }, [recenterTrigger]);
+  }, [recenterTrigger, watchMissionId]);
 
-  // Helper: display the route for a given phase
-  const displayLeg = (phase) => {
-    const map = mapRef.current;
-    if (!map || !mapReadyRef.current) return;
-    const coords = legsRef.current[phase];
-    if (!coords || coords.length === 0) return;
+  // Helper: ensure per-mission sources/layers exist
+  const ensureMissionLayers = (map, missionId) => {
+    if (!map.getSource(`ambulance-${missionId}`)) {
+      const colorIdx = missionCountRef.current++;
+      missionIndexRef.current[missionId] = colorIdx;
+      const color = getMissionColor(colorIdx);
 
-    map.getSource('route')?.setData({
-      type: 'Feature',
-      geometry: { type: 'LineString', coordinates: coords }
-    });
+      map.addSource(`ambulance-${missionId}`, {
+        type: 'geojson',
+        data: { type: 'Feature', geometry: { type: 'Point', coordinates: MUMBAI_CENTER } }
+      });
 
-    // Fly to start of new leg
-    map.flyTo({ center: coords[0], zoom: 13, speed: 1.2 });
+      // Halo
+      map.addLayer({
+        id: `amb-halo-${missionId}`,
+        type: 'circle',
+        source: `ambulance-${missionId}`,
+        paint: { 'circle-radius': 20, 'circle-color': color, 'circle-opacity': 0.2, 'circle-blur': 1 }
+      }, 'roadblocks-layer'); // Insert below roadblocks
 
-    // Regenerate traffic light nodes for this leg
-    const features = generateNodeFeatures(coords);
-    const newSignalState = {};
-    features.forEach(f => { newSignalState[f.properties.intersection_id] = 'RED'; });
-    signalStateRef.current = newSignalState;
-    map.getSource('intersections')?.setData({ type: 'FeatureCollection', features });
-    applySignalFilters(map, signalStateRef.current);
+      // Core circle
+      map.addLayer({
+        id: `amb-core-${missionId}`,
+        type: 'circle',
+        source: `ambulance-${missionId}`,
+        paint: { 'circle-radius': 8, 'circle-color': color, 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff', 'circle-opacity': 1 }
+      }, 'roadblocks-layer');
+
+      // Route line source + layer
+      map.addSource(`route-${missionId}`, {
+        type: 'geojson',
+        data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } }
+      });
+
+      map.addLayer({
+        id: `route-line-${missionId}`,
+        type: 'line',
+        source: `route-${missionId}`,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': color, 'line-width': 4, 'line-opacity': 0.85, 'line-dasharray': [2, 1] }
+      }, 'roadblocks-layer');
+
+      // Init animation state
+      animStateRef.current[missionId] = {
+        prev: MUMBAI_CENTER,
+        target: MUMBAI_CENTER,
+        lastTime: Date.now()
+      };
+    }
   };
 
+  // Main map initialization
   useEffect(() => {
-    signalStateRef.current = {};
-
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: DARK_MATTER_STYLE,
@@ -127,182 +200,311 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
     mapRef.current = map;
 
     map.on('load', () => {
-      mapReadyRef.current = true;
+      mapLoadedRef.current = true;
 
-      // ── Ambulance source ──────────────────────────────────────────────────
-      map.addSource('ambulance', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Point', coordinates: MUMBAI_CENTER } } });
-      map.addLayer({ id: 'ambulance-halo', type: 'circle', source: 'ambulance', paint: { 'circle-radius': 18, 'circle-color': '#10b981', 'circle-opacity': 0.25, 'circle-blur': 1 } });
-
-      const ambulanceImg = new Image(64, 64);
-      ambulanceImg.onload = () => {
-        if (!map.hasImage('ambulance-icon')) map.addImage('ambulance-icon', ambulanceImg);
-        map.addLayer({ id: 'ambulance-core', type: 'symbol', source: 'ambulance', layout: { 'icon-image': 'ambulance-icon', 'icon-size': 0.7, 'icon-allow-overlap': true } });
-      };
-      ambulanceImg.src = AMBULANCE_SVG_B64;
-
-      // ── Route line ─────────────────────────────────────────────────────────
-      map.addSource('route', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } } });
+      // ── Intersection node layers ────────────────────────────────────────────
+      map.addSource('intersections', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] }
+      });
       map.addLayer({
-        id: 'route-line', type: 'line', source: 'route',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#10b981', 'line-width': 4, 'line-opacity': 0.9 }
+        id: 'intersections-red', type: 'circle', source: 'intersections',
+        filter: makeIdFilter([]),
+        paint: { 'circle-radius': 5, 'circle-color': '#c92a2a', 'circle-stroke-width': 1, 'circle-stroke-color': '#ff6b6b', 'circle-opacity': 0.9 }
+      });
+      map.addLayer({
+        id: 'intersections-green', type: 'circle', source: 'intersections',
+        filter: makeIdFilter([]),
+        paint: { 'circle-radius': 6, 'circle-color': '#2b8a3e', 'circle-stroke-width': 1.5, 'circle-stroke-color': '#51cf66', 'circle-opacity': 1 }
+      });
+      map.addLayer({
+        id: 'intersections-orange', type: 'circle', source: 'intersections',
+        filter: makeIdFilter([]),
+        paint: { 'circle-radius': 6, 'circle-color': '#f08c00', 'circle-stroke-width': 1.5, 'circle-stroke-color': '#ffd43b', 'circle-opacity': 1 }
       });
 
-      // ── Traffic light nodes ────────────────────────────────────────────────
-      map.addSource('intersections', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-      map.addLayer({ id: 'intersections-red',    type: 'circle', source: 'intersections', filter: makeIdFilter([]), paint: { 'circle-radius': 6, 'circle-color': '#c92a2a', 'circle-stroke-width': 1.5, 'circle-stroke-color': '#ff6b6b', 'circle-opacity': 0.9 } });
-      map.addLayer({ id: 'intersections-green',  type: 'circle', source: 'intersections', filter: makeIdFilter([]), paint: { 'circle-radius': 7, 'circle-color': '#2b8a3e', 'circle-stroke-width': 1.5, 'circle-stroke-color': '#51cf66', 'circle-opacity': 1 } });
-      map.addLayer({ id: 'intersections-orange', type: 'circle', source: 'intersections', filter: makeIdFilter([]), paint: { 'circle-radius': 7, 'circle-color': '#f08c00', 'circle-stroke-width': 1.5, 'circle-stroke-color': '#ffd43b', 'circle-opacity': 1 } });
+      // ── Roadblocks layer — added LAST so it's always on top ────────────────
+      map.addSource('roadblocks', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] }
+      });
+      map.addLayer({
+        id: 'roadblocks-layer',
+        type: 'circle',
+        source: 'roadblocks',
+        paint: {
+          'circle-radius': 10,
+          'circle-color': '#e03131',
+          'circle-stroke-width': 2.5,
+          'circle-stroke-color': '#ff8787',
+          'circle-opacity': 0.95
+        }
+      });
 
-      // ── Roadblock markers ─────────────────────────────────────────────────
-      map.addSource('roadblocks', { type: 'geojson', data: roadblocksRef.current });
-      map.addLayer({ id: 'roadblocks-layer', type: 'circle', source: 'roadblocks', paint: { 'circle-radius': 12, 'circle-color': '#e03131', 'circle-stroke-width': 3, 'circle-stroke-color': '#ff8787', 'circle-opacity': 0.9 } });
+      // Roadblock text label
+      map.addLayer({
+        id: 'roadblocks-label',
+        type: 'symbol',
+        source: 'roadblocks',
+        layout: {
+          'text-field': '⛔',
+          'text-size': 14,
+          'text-offset': [0, -2],
+          'text-allow-overlap': true
+        }
+      });
 
-      // ── Map click for roadblocks ───────────────────────────────────────────
+      // ── Click handler ────────────────────────────────────────────────────────
       map.on('click', (e) => {
         if (!roadblockActiveRef.current) return;
         const { lng, lat } = e.lngLat;
         wsClient.send({ lat, lng, type: 'OBSTRUCTION' });
         onRoadblockPlaced?.();
       });
+
       map.on('mousemove', () => {
         map.getCanvas().style.cursor = roadblockActiveRef.current ? 'crosshair' : '';
       });
 
-      // Process any mission that arrived before the map was ready
-      if (pendingMissionRef.current) {
-        const { legs, phase } = pendingMissionRef.current;
-        legsRef.current = legs;
-        displayLeg(phase);
-        pendingMissionRef.current = null;
-      }
-
-      // ── Smooth ambulance animation loop ────────────────────────────────────
+      // ── rAF smooth movement loop (per-mission) ───────────────────────────────
       const animate = () => {
-        const elapsed = Date.now() - lastTelemetryRef.current;
-        const t = Math.min(elapsed / 1000, 1);
-        const lng = lerp(prevPosRef.current[0], targetPosRef.current[0], t);
-        const lat = lerp(prevPosRef.current[1], targetPosRef.current[1], t);
-        map.getSource('ambulance')?.setData({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] } });
-        animFrameRef.current = requestAnimationFrame(animate);
+        const now = Date.now();
+        for (const [missionId, state] of Object.entries(animStateRef.current)) {
+          const elapsed = now - state.lastTime;
+          const t = Math.min(elapsed / 1000, 1);
+          const lng = lerp(state.prev[0], state.target[0], t);
+          const lat = lerp(state.prev[1], state.target[1], t);
+          if (map.getSource(`ambulance-${missionId}`)) {
+            map.getSource(`ambulance-${missionId}`).setData({
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: [lng, lat] }
+            });
+          }
+        }
+        requestAnimationFrame(animate);
       };
-      animFrameRef.current = requestAnimationFrame(animate);
+      requestAnimationFrame(animate);
 
-      // ── Flashing orange traffic light loop ────────────────────────────────
+      // ── Flashing orange signal loop ──────────────────────────────────────────
       let flashOn = true;
       flashTimerRef.current = setInterval(() => {
         flashOn = !flashOn;
         if (map.getLayer('intersections-orange')) {
-          map.setPaintProperty('intersections-orange', 'circle-opacity', flashOn ? 1 : 0.1);
+          map.setPaintProperty('intersections-orange', 'circle-opacity', flashOn ? 1 : 0.15);
         }
       }, 500);
-    });
 
-    // ── WS listeners ──────────────────────────────────────────────────────────
-
-    // MISSION_START: store all 3 legs and display leg 1
-    const unsubMission = wsClient.on('MISSION_START', ({ leg_to_incident, leg_to_hospital, leg_to_base, current_phase }) => {
-      const legs = {
-        to_incident: decodePolyline(leg_to_incident),
-        to_hospital: decodePolyline(leg_to_hospital),
-        to_base:     decodePolyline(leg_to_base)
-      };
-      const phase = current_phase || 'to_incident';
-
-      if (!mapReadyRef.current) {
-        pendingMissionRef.current = { legs, phase };
-        return;
+      // ── Sync existing drivers from store (fixes disappearing markers on page switch) ──
+      // driverStore is a module singleton — data persists across React remounts.
+      // But Mapbox markers are destroyed with the map, so we rebuild them after load.
+      for (const driver of driverStore.getAll()) {
+        if (driver.lat && driver.lng && !isNaN(driver.lat) && !isNaN(driver.lng)) {
+          _upsertDriverMarker(driver.id, [driver.lng, driver.lat], map);
+        }
       }
-      legsRef.current = legs;
-      displayLeg(phase);
+
+      // ── Request full state AFTER map is ready (fixes traffic lights disappearing) ──
+      // Requesting state before map.on('load') fires means the replayed MISSION_START
+      // events arrive while mapLoadedRef.current is still false, silently dropping
+      // all route drawing and node generation calls.
+      setTimeout(() => {
+        wsClient.send({ request_state: true });
+      }, 100);
+
     });
 
-    // PHASE_CHANGE: switch to new leg on map
-    const unsubPhase = wsClient.on('PHASE_CHANGE', ({ new_phase }) => {
-      if (mapReadyRef.current) {
-        displayLeg(new_phase);
+    // ── WS Event Listeners ──────────────────────────────────────────────────────
+
+    const unsubMission = wsClient.on('MISSION_START', (payload) => {
+      const { mission_id, leg_to_incident, incident_coords, hospital_coords, current_phase } = payload;
+      if (!mapRef.current || !mapLoadedRef.current) return;
+
+      missionPhaseRef.current[mission_id] = current_phase || 'to_incident';
+      ensureMissionLayers(mapRef.current, mission_id);
+
+      // Draw route for current phase
+      const activeLeg = current_phase === 'to_hospital' ? payload.leg_to_hospital
+        : current_phase === 'to_base' ? payload.leg_to_base
+        : leg_to_incident;
+
+      if (activeLeg) {
+        const coords = decodePolyline(activeLeg);
+        mapRef.current.getSource(`route-${mission_id}`)?.setData({
+          type: 'Feature', geometry: { type: 'LineString', coordinates: coords }
+        });
+
+        // Generate intersection nodes from the current leg
+        _generateNodes(mapRef.current, signalStateRef, coords, mission_id);
+
+
+        // Fly to route start
+        if (coords.length > 0) {
+          mapRef.current.flyTo({ center: coords[0], zoom: 13, speed: 1.2 });
+        }
+      }
+
+      // Place destination pin at incident location
+      if (incident_coords) {
+        _upsertDestinationMarker(mission_id, [incident_coords.lng, incident_coords.lat], getMissionColor(missionIndexRef.current[mission_id] ?? 0));
       }
     });
 
-    // TELEMETRY_UPDATE: move ambulance
-    const unsubTelemetry = wsClient.on('TELEMETRY_UPDATE', ({ lat, lng }) => {
-      prevPosRef.current = targetPosRef.current;
-      targetPosRef.current = [lng, lat];
-      lastTelemetryRef.current = Date.now();
+    const unsubPhase = wsClient.on('PHASE_CHANGE', ({ mission_id, new_phase }) => {
+      if (!mapRef.current || !mapLoadedRef.current) return;
+      missionPhaseRef.current[mission_id] = new_phase;
+      // Phase change doesn't need a full route redraw here — ROUTE_UPDATED handles that
     });
 
-    // ROUTE_UPDATED (detour): update current leg display
-    const unsubRoute = wsClient.on('ROUTE_UPDATED', ({ new_polyline }) => {
-      if (!new_polyline || !mapReadyRef.current) return;
+    const unsubTelemetry = wsClient.on('TELEMETRY_UPDATE', ({ mission_id, lat, lng }) => {
+      const state = animStateRef.current[mission_id];
+      if (state) {
+        state.prev = state.target;
+        state.target = [lng, lat];
+        state.lastTime = Date.now();
+      }
+    });
+
+    const unsubRoute = wsClient.on('ROUTE_UPDATED', ({ mission_id, new_polyline }) => {
+      if (!mapRef.current || !mapLoadedRef.current || !new_polyline) return;
       const coords = decodePolyline(new_polyline);
-      mapRef.current?.getSource('route')?.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords } });
+      mapRef.current.getSource(`route-${mission_id}`)?.setData({
+        type: 'Feature', geometry: { type: 'LineString', coordinates: coords }
+      });
+      _generateNodes(mapRef.current, signalStateRef, coords, mission_id);
     });
 
-    // INCIDENT_LOGGED: draw roadblock
     const unsubIncident = wsClient.on('INCIDENT_LOGGED', ({ lat, lng }) => {
-      roadblocksRef.current.features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] } });
       const map = mapRef.current;
-      if (map && mapReadyRef.current) {
-        map.getSource('roadblocks')?.setData(roadblocksRef.current);
-        if (map.getLayer('roadblocks-layer')) map.moveLayer('roadblocks-layer');
-      }
+      if (!map || !mapLoadedRef.current) return;
+      const existing = map.getSource('roadblocks')?._data;
+      const newFeatures = [
+        ...(existing?.features || []),
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] } }
+      ];
+      map.getSource('roadblocks')?.setData({ type: 'FeatureCollection', features: newFeatures });
     });
 
-    // Signal preemption
-    const unsubPreempt = wsClient.on('SIGNAL_PREEMPT', ({ intersection_id }) => {
+    const unsubPreempt = wsClient.on('SIGNAL_PREEMPT', ({ intersection_id, mission_id }) => {
+      // Skip preemption if mission is on return-to-base leg
+      if (mission_id && missionPhaseRef.current[mission_id] === 'to_base') return;
       const map = mapRef.current;
-      if (!map || !mapReadyRef.current) return;
+      if (!map || !mapLoadedRef.current) return;
       signalStateRef.current[intersection_id] = 'GREEN';
-      applySignalFilters(map, signalStateRef.current);
+      _applySignalFilters(map, signalStateRef.current);
     });
 
     const unsubRelease = wsClient.on('SIGNAL_RELEASE', ({ intersection_id }) => {
       const map = mapRef.current;
-      if (!map || !mapReadyRef.current) return;
+      if (!map || !mapLoadedRef.current) return;
       signalStateRef.current[intersection_id] = 'RELEASING';
-      applySignalFilters(map, signalStateRef.current);
+      _applySignalFilters(map, signalStateRef.current);
       clearTimeout(orangeTimersRef.current[intersection_id]);
       orangeTimersRef.current[intersection_id] = setTimeout(() => {
         signalStateRef.current[intersection_id] = 'RED';
-        applySignalFilters(mapRef.current, signalStateRef.current);
+        _applySignalFilters(mapRef.current, signalStateRef.current);
       }, 3000);
     });
 
-    // After all listeners are registered, request state replay from backend.
-    // 100ms delay allows React to finish registering all listeners before backend responds.
-    const stateTimer = setTimeout(() => { wsClient.send({ request_state: true }); }, 100);
+    const unsubDriver = wsClient.on('DRIVER_REGISTERED', ({ driver_id, lat, lng }) => {
+      driverStore.addOrUpdate(driver_id, lat, lng);
+      _upsertDriverMarker(driver_id, [lng, lat], mapRef.current);
+    });
+
+    // Sync driver markers from store on mount
+    const unsubStore = driverStore.subscribe((allDrivers) => {
+      if (!mapRef.current || !mapLoadedRef.current) return;
+      for (const driver of allDrivers) {
+        _upsertDriverMarker(driver.id, [driver.lng, driver.lat], mapRef.current);
+      }
+    });
 
     return () => {
       unsubMission(); unsubPhase(); unsubTelemetry(); unsubRoute();
-      unsubIncident(); unsubPreempt(); unsubRelease();
-      clearTimeout(stateTimer);
-      cancelAnimationFrame(animFrameRef.current);
+      unsubIncident(); unsubPreempt(); unsubRelease(); unsubDriver();
+      unsubStore();
       clearInterval(flashTimerRef.current);
       Object.values(orangeTimersRef.current).forEach(clearTimeout);
-      mapRef.current?.remove();
-      mapReadyRef.current = false;
+      Object.values(missionMarkersRef.current).forEach(m => m.remove());
+      Object.values(driverMarkersRef.current).forEach(m => m.remove());
+      map.remove();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // --- Helpers ---
+
+  function _upsertDestinationMarker(missionId, lngLat, color) {
+    if (!mapRef.current) return;
+    missionMarkersRef.current[missionId]?.remove();
+    const el = createDestinationPinEl(color);
+    const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+      .setLngLat(lngLat)
+      .addTo(mapRef.current);
+    missionMarkersRef.current[missionId] = marker;
+  }
+
+  function _upsertDriverMarker(driverId, lngLat, map) {
+    if (!map || !mapLoadedRef.current || !lngLat[0] || !lngLat[1]) return;
+    if (isNaN(lngLat[0]) || isNaN(lngLat[1])) return;
+
+    if (driverMarkersRef.current[driverId]) {
+      driverMarkersRef.current[driverId].setLngLat(lngLat);
+    } else {
+      // Assign a color based on driver index
+      const allDriverIds = driverStore.getAll().map(d => d.id);
+      const idx = allDriverIds.indexOf(driverId);
+      const color = getMissionColor(idx >= 0 ? idx : 0);
+      const el = createDriverIconEl(driverId, color);
+      const marker = new mapboxgl.Marker({ element: el })
+        .setLngLat(lngLat)
+        .setPopup(new mapboxgl.Popup({ offset: 20 }).setHTML(`<strong>${driverId}</strong>`))
+        .addTo(map);
+      driverMarkersRef.current[driverId] = marker;
+    }
+  }
+
   return (
-    <div className="relative w-full h-full">
-      <div ref={containerRef} className="w-full h-full" id="tmc-map-container" />
-      <button
-        className="absolute top-6 right-6 z-40 bg-[#1e1e1e] border border-[#333] hover:bg-[#2a2a2a] p-3 rounded shadow-lg transition-colors group"
-        onClick={() => { mapRef.current?.flyTo({ center: targetPosRef.current, zoom: 16, pitch: 60, speed: 1.5 }); }}
-        title="Recenter Map on Ambulance"
-      >
-        {/* Compass icon */}
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-emerald-500" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13l-2 6 6-2-2-6-2 2z"/>
-        </svg>
-      </button>
-    </div>
+    <div
+      ref={containerRef}
+      style={{ width: '100%', height: '100%' }}
+      id="tmc-map-container"
+    />
   );
 }
 
-function applySignalFilters(map, signalState) {
-  if (!map || !map.getSource('intersections')) return;
+function _generateNodes(map, signalStateRef, coords, missionId) {
+  if (!map || !map.loaded() || coords.length < 3) return;
+
+  // Use mission-scoped IDs so multiple missions don't overwrite each other's nodes
+  const prefix = missionId ? `m${missionId.replace(/[^a-zA-Z0-9]/g, '')}-node` : 'node';
+  const newFeatures = [];
+  const addedState = {};
+  const step = Math.max(1, Math.floor(coords.length / 6));
+  let nodeIdx = 1;
+  for (let i = step; i < coords.length - 1; i += step) {
+    const id = `${prefix}-${nodeIdx++}`;
+    newFeatures.push({
+      type: 'Feature',
+      properties: { intersection_id: id, signal_phase: 'RED' },
+      geometry: { type: 'Point', coordinates: coords[i] }
+    });
+    addedState[id] = 'RED';
+  }
+
+  // Merge with existing signal state (accumulate, don't replace)
+  const existing = map.getSource('intersections')?._data?.features || [];
+  const existingMissionIds = new Set(newFeatures.map(f => f.properties.intersection_id));
+  const retained = existing.filter(f => !existingMissionIds.has(f.properties.intersection_id));
+  signalStateRef.current = { ...signalStateRef.current, ...addedState };
+
+  map.getSource('intersections')?.setData({
+    type: 'FeatureCollection',
+    features: [...retained, ...newFeatures]
+  });
+  _applySignalFilters(map, signalStateRef.current);
+}
+
+function _applySignalFilters(map, signalState) {
+  if (!map || !map.loaded()) return;
   const redIds = [], greenIds = [], orangeIds = [];
   Object.entries(signalState).forEach(([id, phase]) => {
     if (phase === 'RED') redIds.push(id);

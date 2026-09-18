@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useGPSSimulator } from './use-gps-simulator';
 import wsClient from '../../services/websocket-client';
+import { driverStore } from '../../services/driver-store';
 import MapEngine from '../map-engine/map-engine';
 
 const PHASE_LABELS = {
@@ -18,39 +19,29 @@ const PHASE_COLORS = {
 export default function DriverHud() {
   useEffect(() => { wsClient.connect(); }, []);
 
+  const [drivers, setDrivers]               = useState([]);
+  const [selectedDriverId, setSelectedDriverId] = useState(null);
+
+  // Subscribe to driver store so the pill list updates live
+  useEffect(() => {
+    const unsub = driverStore.subscribe((all) => {
+      setDrivers(all);
+      // Auto-select first driver if none selected yet
+      setSelectedDriverId(prev => prev || (all.length > 0 ? all[0].id : null));
+    });
+    const unsubWs = wsClient.on('DRIVER_REGISTERED', ({ driver_id, lat, lng }) => {
+      driverStore.addOrUpdate(driver_id, lat, lng);
+    });
+    return () => { unsub(); unsubWs(); };
+  }, []);
+
   const {
     currentLocation, speed, eta, distanceLeft,
     activeMissionId, currentPhase, turnInstruction, turnDistance
-  } = useGPSSimulator();
+  } = useGPSSimulator(selectedDriverId);
 
-  const [signalStatus, setSignalStatus]     = useState(null);
+  const [signalStatus, setSignalStatus]       = useState(null);
   const [recenterTrigger, setRecenterTrigger] = useState(0);
-  const [baseLocation, setBaseLocation]     = useState('18.9220, 72.8347');
-  const [isSavingBase, setIsSavingBase]     = useState(false);
-  const [baseSaved, setBaseSaved]           = useState(false);
-
-  const handleSaveBase = async () => {
-    setIsSavingBase(true);
-    const parts = baseLocation.split(',');
-    if (parts.length === 2) {
-      try {
-        await fetch('/api/unit/base', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            unit_id: 'UNIT-1',
-            base_lat: parts[0].trim(),
-            base_lng: parts[1].trim()
-          })
-        });
-        setBaseSaved(true);
-        setTimeout(() => setBaseSaved(false), 3000);
-      } catch (err) {
-        console.error('Failed to save base location', err);
-      }
-    }
-    setIsSavingBase(false);
-  };
 
   useEffect(() => {
     const unsubPreempt = wsClient.on('SIGNAL_PREEMPT', () => { setSignalStatus('GREEN'); });
@@ -68,7 +59,11 @@ export default function DriverHud() {
 
         {/* Full Screen Map */}
         <div className="absolute inset-0 z-0 bg-[#1a1a1a]">
-          <MapEngine isRoadblockModeActive={false} recenterTrigger={recenterTrigger} />
+          <MapEngine
+            isRoadblockModeActive={false}
+            recenterTrigger={recenterTrigger}
+            watchMissionId={activeMissionId}
+          />
         </div>
 
         {/* Top HUD Card */}
@@ -90,7 +85,7 @@ export default function DriverHud() {
               </svg>
               <div className="flex flex-col min-w-0">
                 <h1 className="text-[22px] leading-tight font-bold text-[#f5f5f5] truncate">
-                  {hasMission ? turnInstruction : 'No active mission'}
+                  {hasMission ? turnInstruction : (selectedDriverId ? 'No active mission' : 'Select a driver')}
                 </h1>
                 {hasMission && turnDistance !== '--' && (
                   <p className="text-[14px] text-[#8b8b8b] font-medium mt-0.5">{turnDistance}</p>
@@ -141,31 +136,36 @@ export default function DriverHud() {
           </div>
         )}
 
-        {/* Base Location Panel (Bottom Left) */}
-        <div className="absolute bottom-8 left-4 z-30 flex flex-col space-y-2 bg-[#1a1a1a]/90 backdrop-blur-md p-3 rounded-xl border border-[#2a2a2a] shadow-xl w-60">
-          <label className="text-[#8b8b8b] text-[9px] font-bold tracking-widest uppercase">
-            Standby Base (Lat, Lng)
-          </label>
-          <div className="flex space-x-2">
-            <input
-              type="text"
-              value={baseLocation}
-              onChange={e => setBaseLocation(e.target.value)}
-              className="flex-1 bg-[#0b0b0b] border border-[#333] rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-emerald-500"
-            />
-            <button
-              onClick={handleSaveBase}
-              disabled={isSavingBase}
-              className={`text-white text-xs font-bold px-3 py-1 rounded transition-colors ${baseSaved ? 'bg-emerald-700' : 'bg-emerald-600 hover:bg-emerald-500'}`}
-            >
-              {isSavingBase ? '...' : baseSaved ? '✓' : 'SET'}
-            </button>
-          </div>
+        {/* Driver Pill Switcher (bottom) */}
+        <div className="absolute bottom-24 left-0 right-0 z-30 flex justify-center px-4">
+          {drivers.length > 0 ? (
+            <div className="flex gap-2 bg-[#0b0b0b]/90 backdrop-blur-md rounded-full px-3 py-2 border border-[#2a2a2a] shadow-2xl overflow-x-auto max-w-full">
+              {drivers.map(d => (
+                <button
+                  key={d.id}
+                  onClick={() => setSelectedDriverId(d.id)}
+                  className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold font-mono transition-all ${
+                    selectedDriverId === d.id
+                      ? 'bg-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.4)]'
+                      : d.status === 'ON_MISSION'
+                        ? 'bg-red-900/60 text-red-300 border border-red-700'
+                        : 'bg-[#1e1e1e] text-[#8b8b8b] border border-[#2a2a2a] hover:text-white'
+                  }`}
+                >
+                  {d.id}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-[#0b0b0b]/80 backdrop-blur-md rounded-full px-4 py-2 border border-[#2a2a2a] text-[11px] text-[#555] font-mono">
+              No units registered — go to TMC Dashboard
+            </div>
+          )}
         </div>
 
-        {/* Floating Action Buttons (Bottom Right) */}
-        <div className="absolute bottom-8 right-4 z-30 flex flex-col items-center space-y-3">
-          {/* Recenter / compass */}
+        {/* Floating Action Buttons */}
+        <div className="absolute bottom-6 right-4 z-30 flex flex-col items-center space-y-3">
+          {/* Recenter */}
           <button
             className="w-12 h-12 bg-[#1a1a1a]/90 hover:bg-[#2a2a2a] backdrop-blur transition-colors rounded-full flex items-center justify-center shadow-xl border border-[#2a2a2a]"
             onClick={() => setRecenterTrigger(Date.now())}
