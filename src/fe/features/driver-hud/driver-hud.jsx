@@ -16,7 +16,7 @@ export default function DriverHud() {
         
         {/* Top Instruction Panel */}
         <div className="bg-[#141414] border-b border-[#2a2a2a] p-6 z-20 flex flex-col shadow-md">
-          <p className="text-[#8b8b8b] text-[10px] font-semibold tracking-[0.15em] mb-6 uppercase">HorizonGrid Navigate</p>
+          <p className="text-[#8b8b8b] text-[10px] font-semibold tracking-[0.15em] mb-6 uppercase">PulseRoute Navigate</p>
           <div className="flex items-center space-x-4">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-white" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8-8-8z" />
@@ -51,7 +51,7 @@ export default function DriverHud() {
           <button 
             className="absolute bottom-6 right-6 w-16 h-16 bg-red-600 hover:bg-red-500 transition-colors rounded-full flex flex-col items-center justify-center shadow-2xl border-2 border-red-400 z-30"
             onClick={() => {
-              wsClient.send({ lat: currentLocation[0], lng: currentLocation[1], type: 'OBSTRUCTION' });
+              wsClient.send({ lat: currentLocation[1], lng: currentLocation[0], type: 'OBSTRUCTION', mission_id: activeMissionId });
               alert('Obstruction logged! Check TMC.');
             }}
           >
