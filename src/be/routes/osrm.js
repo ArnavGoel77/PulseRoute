@@ -48,10 +48,25 @@ function decodePolyline(encoded) {
  */
 router.get('/', async (req, res) => {
   try {
-    const { start_lat, start_lng, end_lat, end_lng, detour_lat, detour_lng, base_lat, base_lng } = req.query;
+    const { start_lat, start_lng, end_lat, end_lng, detour_lat, detour_lng, unit_id } = req.query;
 
     if (!start_lat || !start_lng || !end_lat || !end_lng) {
       return res.status(400).json({ error: 'missing_coordinates' });
+    }
+
+    let base_lat, base_lng;
+    
+    // Fetch base coordinates from Redis if unit_id is provided
+    if (unit_id && redis && typeof redis.hgetall === 'function') {
+      try {
+        const baseData = await redis.hgetall(`unit:${unit_id}:base`);
+        if (baseData && baseData.base_lat && baseData.base_lng) {
+          base_lat = baseData.base_lat;
+          base_lng = baseData.base_lng;
+        }
+      } catch (err) {
+        console.warn('Failed to fetch unit base from Redis:', err);
+      }
     }
 
     // Strict snake_case namespace for Redis key
