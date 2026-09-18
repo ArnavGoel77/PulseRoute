@@ -41,7 +41,7 @@ function extractNodesFromPolyline(polyline) {
 /**
  * activeMissions stores the full state for each mission:
  * {
- *   mission_id, priority,
+ *   mission_id, priority, unit_id,
  *   leg_to_incident, leg_to_hospital, leg_to_base,  // encoded polylines
  *   incident_coords, hospital_coords, base_coords,
  *   current_phase: 'to_incident' | 'to_hospital' | 'to_base' | 'complete',
@@ -49,6 +49,12 @@ function extractNodesFromPolyline(polyline) {
  * }
  */
 const activeMissions = {};
+
+/**
+ * registeredDrivers stores unit positions for state replay:
+ * { driver_id: { driver_id, lat, lng } }
+ */
+const registeredDrivers = {};
 
 function broadcast(payload) {
   const message = JSON.stringify(payload);
@@ -92,6 +98,7 @@ function initTelemetry(wss) {
         activeMissions[m.mission_id] = {
           mission_id: m.mission_id,
           priority: m.priority,
+          unit_id: m.unit_id,
           leg_to_incident: m.leg_to_incident,
           leg_to_hospital: m.leg_to_hospital,
           leg_to_base: m.leg_to_base,
@@ -101,8 +108,16 @@ function initTelemetry(wss) {
           current_phase: 'to_incident',
           upcomingNodes: extractNodesFromPolyline(m.leg_to_incident)
         };
-        console.log(`[Telemetry] MISSION_START: ${m.mission_id} — phase: to_incident`);
+        console.log(`[Telemetry] MISSION_START: ${m.mission_id} — unit: ${m.unit_id} — phase: to_incident`);
         broadcast(m);
+        return;
+      }
+
+      // ── DRIVER_REGISTERED: { driver_id, lat, lng }
+      if (parsed.driver_id !== undefined && parsed.lat !== undefined && parsed.speed === undefined) {
+        registeredDrivers[parsed.driver_id] = { driver_id: parsed.driver_id, lat: parsed.lat, lng: parsed.lng };
+        console.log(`[Telemetry] DRIVER_REGISTERED: ${parsed.driver_id} @ ${parsed.lat}, ${parsed.lng}`);
+        broadcast(parsed); // broadcast to all clients so map updates
         return;
       }
 
@@ -166,10 +181,12 @@ function initTelemetry(wss) {
 
       // ── STATE_REQUEST: any client can request full state replay
       if (parsed.request_state) {
+        // Replay all active missions
         for (const [missionId, missionData] of Object.entries(activeMissions)) {
           sendToClient(ws, {
             mission_id: missionId,
             priority: missionData.priority,
+            unit_id: missionData.unit_id,
             leg_to_incident: missionData.leg_to_incident,
             leg_to_hospital: missionData.leg_to_hospital,
             leg_to_base: missionData.leg_to_base,
@@ -189,6 +206,10 @@ function initTelemetry(wss) {
             });
           }
         }
+        // Replay all registered drivers
+        for (const driver of Object.values(registeredDrivers)) {
+          sendToClient(ws, driver);
+        }
         return;
       }
     });
@@ -197,12 +218,13 @@ function initTelemetry(wss) {
       allClients.delete(ws);
     });
 
-    // Immediately replay all active missions to the new client
+    // Immediately replay all active missions and drivers to the new client
     (async () => {
       for (const [missionId, missionData] of Object.entries(activeMissions)) {
         sendToClient(ws, {
           mission_id: missionId,
           priority: missionData.priority,
+          unit_id: missionData.unit_id,
           leg_to_incident: missionData.leg_to_incident,
           leg_to_hospital: missionData.leg_to_hospital,
           leg_to_base: missionData.leg_to_base,
@@ -221,6 +243,11 @@ function initTelemetry(wss) {
             speed: parseFloat(latestState.speed)
           });
         }
+      }
+
+      // Replay registered drivers
+      for (const driver of Object.values(registeredDrivers)) {
+        sendToClient(ws, driver);
       }
     })();
   });

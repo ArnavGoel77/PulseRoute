@@ -1,13 +1,14 @@
 /**
- * GPS Simulator — 3-Phase Mission Tracking
+ * GPS Simulator — Multi-Driver, 3-Phase Mission Tracking
+ *
+ * Accepts a `driverId` param. Only processes MISSION_START events
+ * that contain a matching `unit_id` field (or the first mission if
+ * no driverId is set) to support the Driver HUD switcher.
  *
  * Phases:
  *  'to_incident'  — ambulance drives from base to scene
  *  'to_hospital'  — ambulance transports patient to hospital
  *  'to_base'      — ambulance returns to standby base
- *
- * Phase transitions are broadcast as PHASE_CHANGE over WebSocket so ALL
- * clients (CAD, TMC, HUD) update their displayed route simultaneously.
  */
 import { useState, useEffect, useRef } from 'react';
 import wsClient from '../../services/websocket-client';
@@ -23,69 +24,78 @@ function decodePolyline(encoded) {
     shift = 0; result = 0;
     do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
     lng += (result & 1) ? ~(result >> 1) : result >> 1;
-    coords.push([lng / 1e5, lat / 1e5]); // [lng, lat]
+    coords.push([lng / 1e5, lat / 1e5]);
   }
   return coords;
 }
 
-export function useGPSSimulator() {
-  // No mission active by default — do NOT start moving until MISSION_START received
-  const [missionActive, setMissionActive]       = useState(false);
-  const [activeMissionId, setActiveMissionId]   = useState(null);
-  const [currentPhase, setCurrentPhase]         = useState('to_incident');
+export function useGPSSimulator(driverId = null) {
+  const [missionActive, setMissionActive]     = useState(false);
+  const [activeMissionId, setActiveMissionId] = useState(null);
+  const [currentPhase, setCurrentPhase]       = useState('to_incident');
 
-  // The route for the CURRENT phase only
-  const [route, setRoute]                       = useState([]);
-  const [routeIndex, setRouteIndex]             = useState(0);
+  const [route, setRoute]       = useState([]);
+  const [routeIndex, setRouteIndex] = useState(0);
 
-  // All 3 legs (stored so we can switch on phase change)
-  const legsRef = useRef({ to_incident: [], to_hospital: [], to_base: [] });
-  const missionIdRef = useRef(null);
-  const currentPhaseRef = useRef('to_incident');
-  const currentLocationRef = useRef(null);
+  const legsRef             = useRef({ to_incident: [], to_hospital: [], to_base: [] });
+  const missionIdRef        = useRef(null);
+  const currentPhaseRef     = useRef('to_incident');
+  const currentLocationRef  = useRef(null);
+  const driverIdRef         = useRef(driverId);
 
-  const [currentLocation, setCurrentLocation]   = useState(null);
-  const [speed, setSpeed]                       = useState(0);
-  const [eta, setEta]                           = useState('--');
-  const [distanceLeft, setDistanceLeft]         = useState('--');
-  const [turnInstruction, setTurnInstruction]   = useState('Waiting for mission...');
-  const [turnDistance, setTurnDistance]         = useState('--');
-  const [demoSpeed, setDemoSpeed]               = useState(1);
-  const [demoPaused, setDemoPaused]             = useState(false);
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [speed, setSpeed]                     = useState(0);
+  const [eta, setEta]                         = useState('--');
+  const [distanceLeft, setDistanceLeft]       = useState('--');
+  const [turnInstruction, setTurnInstruction] = useState('Waiting for mission...');
+  const [turnDistance, setTurnDistance]       = useState('--');
+  const [demoSpeed, setDemoSpeed]             = useState(1);
+  const [demoPaused, setDemoPaused]           = useState(false);
 
-  // Keep refs in sync with state for use inside setInterval closures
+  // Keep refs current
   currentPhaseRef.current = currentPhase;
+  driverIdRef.current = driverId;
 
   const switchToPhase = (newPhase, missionId) => {
     const leg = legsRef.current[newPhase];
     if (!leg || leg.length === 0) return;
-
-    // Start from the current location for a seamless transition
     const startCoord = currentLocationRef.current || leg[0];
-    const newRoute = [startCoord, ...leg];
-    setRoute(newRoute);
+    setRoute([startCoord, ...leg]);
     setRouteIndex(0);
     setCurrentPhase(newPhase);
     currentPhaseRef.current = newPhase;
-
-    // Tell backend (and all other clients) about the phase change
     wsClient.send({ mission_id: missionId || missionIdRef.current, new_phase: newPhase });
-
-    const phaseLabels = {
-      to_incident: 'En Route to Incident',
-      to_hospital: 'Transporting Patient',
-      to_base:     'Returning to Base'
-    };
+    const phaseLabels = { to_incident: 'En Route to Incident', to_hospital: 'Transporting Patient', to_base: 'Returning to Base' };
     setTurnInstruction(phaseLabels[newPhase] || 'Follow Route');
   };
 
-  // Listen for mission start / updates / phase changes from WS
+  // Reset state when driverId changes
+  useEffect(() => {
+    setMissionActive(false);
+    setActiveMissionId(null);
+    setRoute([]);
+    setRouteIndex(0);
+    setCurrentLocation(null);
+    setSpeed(0);
+    setEta('--');
+    setDistanceLeft('--');
+    setTurnInstruction('Waiting for mission...');
+    setTurnDistance('--');
+    missionIdRef.current = null;
+    legsRef.current = { to_incident: [], to_hospital: [], to_base: [] };
+    currentLocationRef.current = null;
+    // Request fresh state from backend
+    setTimeout(() => wsClient.send({ request_state: true }), 80);
+  }, [driverId]);
+
   useEffect(() => {
     const unsubMission = wsClient.on('MISSION_START', (payload) => {
-      // Accept first mission only (or if no active mission)
-      if (missionIdRef.current && missionIdRef.current !== payload.mission_id) return;
+      const { mission_id, unit_id, leg_to_incident, leg_to_hospital, leg_to_base, current_phase } = payload;
 
-      const { mission_id, leg_to_incident, leg_to_hospital, leg_to_base, current_phase } = payload;
+      // Filter: only accept missions for this driver
+      if (driverIdRef.current && unit_id && unit_id !== driverIdRef.current) return;
+      // If we already have a different active mission, skip
+      if (missionIdRef.current && missionIdRef.current !== mission_id) return;
 
       legsRef.current = {
         to_incident: decodePolyline(leg_to_incident),
@@ -96,7 +106,6 @@ export function useGPSSimulator() {
       missionIdRef.current = mission_id;
       setActiveMissionId(mission_id);
 
-      // Restore phase if this is a state replay (reconnect)
       const phase = current_phase || 'to_incident';
       const leg = legsRef.current[phase];
       setRoute(leg);
@@ -109,7 +118,6 @@ export function useGPSSimulator() {
 
     const unsubPhase = wsClient.on('PHASE_CHANGE', ({ mission_id, new_phase }) => {
       if (mission_id !== missionIdRef.current) return;
-      // Only update our route if we didn't trigger this (avoid double-switching)
       if (new_phase === currentPhaseRef.current) return;
       const leg = legsRef.current[new_phase];
       if (leg && leg.length > 0) {
@@ -137,11 +145,7 @@ export function useGPSSimulator() {
       if (paused !== undefined) setDemoPaused(paused);
     });
 
-    // After listeners are registered, request full state from backend.
-    // Small delay ensures the event listeners above are attached before the backend responds.
-    const stateTimer = setTimeout(() => { wsClient.send({ request_state: true }); }, 80);
-
-    return () => { unsubMission(); unsubPhase(); unsubRoute(); unsubDemoSpeed(); clearTimeout(stateTimer); };
+    return () => { unsubMission(); unsubPhase(); unsubRoute(); unsubDemoSpeed(); };
   }, []);
 
   // Main GPS tick loop
@@ -153,7 +157,6 @@ export function useGPSSimulator() {
     const interval = setInterval(() => {
       setRouteIndex(prevIndex => {
         if (prevIndex >= route.length - 1) {
-          // End of current leg — advance to next phase
           const phase = currentPhaseRef.current;
           if (phase === 'to_incident') {
             setSpeed(0);
@@ -168,6 +171,9 @@ export function useGPSSimulator() {
             setTurnInstruction('Mission Complete — Back at Base');
             setEta('--');
             setDistanceLeft('0.0 km');
+            setMissionActive(false);
+            missionIdRef.current = null;
+            setActiveMissionId(null);
           }
           return prevIndex;
         }
@@ -195,7 +201,7 @@ export function useGPSSimulator() {
             }
           } catch (e) { /* skip */ }
 
-          // Turn instruction — find next significant bearing change
+          // Turn instruction
           try {
             let currentBearing = turf.bearing(turf.point(remainingRoute[0]), turf.point(remainingRoute[1]));
             let foundTurn = false;
@@ -226,7 +232,6 @@ export function useGPSSimulator() {
           setEta('Arrived');
         }
 
-        // Broadcast telemetry
         wsClient.send({
           mission_id: missionIdRef.current,
           lat: nextLoc[1],

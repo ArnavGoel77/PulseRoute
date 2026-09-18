@@ -92,8 +92,14 @@ class WebSocketClient {
    *  ROUTE_UPDATED   — { mission_id, new_polyline }
    *  INCIDENT_LOGGED — { lat, lng, type: 'OBSTRUCTION' }
    *  DEMO_SPEED_CONTROL — { speedMult, paused }
+   *  DRIVER_REGISTERED — { driver_id, lat, lng }
+   *  DRIVER_UPDATE   — { driver_id, lat, lng, status, mission_id }
    */
   _route(payload) {
+    // DRIVER_REGISTERED — identified by driver_id + lat + lng (no speed)
+    if (payload.driver_id !== undefined) {
+      return this._emit('DRIVER_REGISTERED', payload);
+    }
     // MISSION_START — identified by presence of leg_to_incident
     if (payload.leg_to_incident !== undefined) {
       return this._emit('MISSION_START', payload);
