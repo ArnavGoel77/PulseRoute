@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import wsClient from '../../services/websocket-client';
+import * as turf from '@turf/turf';
 
 // A mock polyline to traverse (Mumbai)
 const MOCK_POLYLINE = [
@@ -28,17 +29,21 @@ export function useGPSSimulator() {
   const [route, setRoute] = useState(MOCK_POLYLINE);
   const [currentLocation, setCurrentLocation] = useState(MOCK_POLYLINE[0]);
   const [speed, setSpeed] = useState(0);
-  const [eta, setEta] = useState('4m 20s');
-  const [distanceLeft, setDistanceLeft] = useState('2.1 mi');
+  const [eta, setEta] = useState('--');
+  const [distanceLeft, setDistanceLeft] = useState('--');
   const [missionActive, setMissionActive] = useState(false);
+  const [routeIndex, setRouteIndex] = useState(0);
+  const [activeMissionId, setActiveMissionId] = useState('M-042');
 
   // Listen for route updates
   useEffect(() => {
-    const unsubMission = wsClient.on('MISSION_START', ({ path_polyline }) => {
+    const unsubMission = wsClient.on('MISSION_START', ({ path_polyline, mission_id }) => {
       if (path_polyline) {
         const coords = decodePolyline(path_polyline);
-        setRoute(coords);
-        setCurrentLocation(coords[0]);
+        if (mission_id) setActiveMissionId(mission_id);
+        // Anti-teleport: Prepend current location so we drive there smoothly
+        setRoute([currentLocation, ...coords]);
+        setRouteIndex(0);
         setMissionActive(true);
       }
     });
@@ -46,8 +51,9 @@ export function useGPSSimulator() {
     const unsubRoute = wsClient.on('ROUTE_UPDATED', ({ new_polyline }) => {
       if (new_polyline) {
         const coords = decodePolyline(new_polyline);
-        setRoute(coords);
-        setCurrentLocation(coords[0]);
+        // Anti-teleport: Prepend current location
+        setRoute([currentLocation, ...coords]);
+        setRouteIndex(0);
       }
     });
 
@@ -55,35 +61,66 @@ export function useGPSSimulator() {
       unsubMission();
       unsubRoute();
     };
-  }, []);
+  }, [currentLocation]); // Depend on currentLocation for accurate closure state
   
   useEffect(() => {
     if (!missionActive) return;
 
-    let index = 0;
     const interval = setInterval(() => {
-      if (route.length === 0) return;
-      index = (index + 1) % route.length;
-      setCurrentLocation(route[index]);
+      if (route.length === 0 || routeIndex >= route.length - 1) {
+        setSpeed(0);
+        return; // Reached end of route
+      }
       
-      const simSpeed = Math.floor(Math.random() * 20) + 30; // 30-50 mph
-      setSpeed(simSpeed);
+      const nextIndex = routeIndex + 1;
+      const nextLoc = route[nextIndex];
+      
+      setCurrentLocation(nextLoc);
+      setRouteIndex(nextIndex);
+      
+      const simSpeedMph = Math.floor(Math.random() * 10) + 30; // 30-40 mph
+      setSpeed(simSpeedMph);
+      
+      // Calculate dynamic telemetry
+      const remainingRoute = route.slice(nextIndex);
+      if (remainingRoute.length > 1) {
+        try {
+          const line = turf.lineString(remainingRoute);
+          const distKm = turf.length(line, { units: 'kilometers' });
+          setDistanceLeft(`${distKm.toFixed(1)} km`);
+          
+          // ETA: (dist in km) / (speed in km/h) -> hours
+          const speedKmh = simSpeedMph * 1.60934;
+          if (speedKmh > 0) {
+            const hours = distKm / speedKmh;
+            const mins = Math.floor(hours * 60);
+            const secs = Math.floor((hours * 3600) % 60);
+            setEta(`${mins}m ${secs}s`);
+          }
+        } catch (e) {
+           console.error("Turf distance calculation error", e);
+        }
+      } else {
+        setDistanceLeft('0.0 km');
+        setEta('Arrived');
+      }
       
       wsClient.send({ 
-        mission_id: 'M-042', 
-        lat: route[index][1], 
-        lng: route[index][0], 
-        speed: simSpeed 
+        mission_id: activeMissionId, 
+        lat: nextLoc[1], 
+        lng: nextLoc[0], 
+        speed: simSpeedMph 
       });
     }, 1000); // 1Hz updates as per spec
 
     return () => clearInterval(interval);
-  }, [route, missionActive]);
+  }, [route, routeIndex, missionActive, activeMissionId]);
 
   return {
     currentLocation,
     speed,
     eta,
-    distanceLeft
+    distanceLeft,
+    activeMissionId
   };
 }
