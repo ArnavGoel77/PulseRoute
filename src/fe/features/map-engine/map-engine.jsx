@@ -79,6 +79,9 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
   // D4-6 signal phase tracking
   const signalStateRef      = useRef({}); // { 'node-01': 'RED'|'GREEN'|'RELEASING' }
   const orangeTimersRef     = useRef({}); // per-node timers for RELEASING → RED
+  
+  // D4-7 Roadblock state
+  const roadblocksDataRef   = useRef({ type: 'FeatureCollection', features: [] });
 
   // D4-7 roadblock mode ref (mirrors prop to avoid stale closure in map click handler)
   const roadblockActiveRef  = useRef(isRoadblockModeActive);
@@ -100,6 +103,47 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
       antialias: true,
     });
     mapRef.current = map;
+
+    let pendingMission = null;
+
+    const handleMissionStart = (path_polyline) => {
+      if (!path_polyline || !mapRef.current) return;
+      if (!mapRef.current.isStyleLoaded()) {
+        pendingMission = path_polyline;
+        return;
+      }
+      
+      const coords = decodePolyline(path_polyline);
+      mapRef.current.getSource('route')?.setData({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: coords }
+      });
+      
+      if (coords.length > 0) {
+        mapRef.current.flyTo({ center: coords[0], zoom: 13, speed: 1.2 });
+      }
+
+      const features = [];
+      const newSignalState = {};
+      const step = Math.max(1, Math.floor(coords.length / 6));
+      let nodeId = 1;
+      for (let i = step; i < coords.length - 1; i += step) {
+        const id = `node-${nodeId++}`;
+        features.push({
+          type: 'Feature',
+          properties: { intersection_id: id, signal_phase: 'RED' },
+          geometry: { type: 'Point', coordinates: coords[i] }
+        });
+        newSignalState[id] = 'RED';
+      }
+      
+      signalStateRef.current = newSignalState;
+      mapRef.current.getSource('intersections')?.setData({
+        type: 'FeatureCollection',
+        features
+      });
+      _applySignalFilters(mapRef.current, signalStateRef.current);
+    };
 
     map.on('load', () => {
       // ── D4-5: Ambulance GeoJSON source + layer ──────────────────────────────
@@ -213,7 +257,7 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
       // ── Roadblock markers source (D4-7) ─────────────────────────────────────
       map.addSource('roadblocks', {
         type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] }
+        data: roadblocksDataRef.current
       });
 
       map.addLayer({
@@ -221,10 +265,11 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
         type: 'circle',
         source: 'roadblocks',
         paint: {
-          'circle-radius': 8,
+          'circle-radius': 12,
           'circle-color': '#e03131',
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#ff8787'
+          'circle-stroke-width': 3,
+          'circle-stroke-color': '#ff8787',
+          'circle-opacity': 0.9
         }
       });
 
@@ -246,6 +291,12 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
       map.on('mousemove', () => {
         map.getCanvas().style.cursor = roadblockActiveRef.current ? 'crosshair' : '';
       });
+
+      // Process any pending mission start from before load
+      if (pendingMission) {
+        handleMissionStart(pendingMission);
+        pendingMission = null;
+      }
 
       // ── D4-5: Start rAF smooth movement loop ────────────────────────────────
       const animate = () => {
@@ -286,38 +337,7 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
 
     // MISSION_START → draw the route polyline on the map and generate intersections
     const unsubMission = wsClient.on('MISSION_START', ({ path_polyline }) => {
-      if (!path_polyline || !mapRef.current) return;
-      const coords = decodePolyline(path_polyline);
-      mapRef.current.getSource('route')?.setData({
-        type: 'Feature',
-        geometry: { type: 'LineString', coordinates: coords }
-      });
-      // Fly to the start of the route
-      if (coords.length > 0) {
-        mapRef.current.flyTo({ center: coords[0], zoom: 13, speed: 1.2 });
-      }
-
-      // Generate nodes dynamically along the route (guarantee ~5 nodes)
-      const features = [];
-      const newSignalState = {};
-      const step = Math.max(1, Math.floor(coords.length / 6));
-      let nodeId = 1;
-      for (let i = step; i < coords.length - 1; i += step) {
-        const id = `node-${nodeId++}`;
-        features.push({
-          type: 'Feature',
-          properties: { intersection_id: id, signal_phase: 'RED' },
-          geometry: { type: 'Point', coordinates: coords[i] }
-        });
-        newSignalState[id] = 'RED';
-      }
-      
-      signalStateRef.current = newSignalState;
-      mapRef.current.getSource('intersections')?.setData({
-        type: 'FeatureCollection',
-        features
-      });
-      _applySignalFilters(mapRef.current, signalStateRef.current);
+      handleMissionStart(path_polyline);
     });
 
     // ROUTE_UPDATED → update the route polyline on reroute
@@ -333,19 +353,17 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
     // INCIDENT_LOGGED → draw roadblock marker
     const unsubIncident = wsClient.on('INCIDENT_LOGGED', ({ lat, lng }) => {
       const map = mapRef.current;
-      if (!map || !map.loaded()) return;
-      const existing = map.getSource('roadblocks')?._data;
-      const newFeatures = [
-        ...(existing?.features || []),
-        {
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [lng, lat] }
-        }
-      ];
-      map.getSource('roadblocks')?.setData({
-        type: 'FeatureCollection',
-        features: newFeatures
-      });
+      
+      const newFeature = {
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [lng, lat] }
+      };
+      
+      roadblocksDataRef.current.features.push(newFeature);
+      
+      if (map && map.loaded()) {
+        map.getSource('roadblocks')?.setData(roadblocksDataRef.current);
+      }
     });
 
     // D4-6: SIGNAL_PREEMPT → snap node to GREEN via Map#setFilter
@@ -384,16 +402,35 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
       cancelAnimationFrame(animFrameRef.current);
       clearInterval(flashTimerRef.current);
       Object.values(orangeTimersRef.current).forEach(clearTimeout);
-      map.remove();
+      if (mapRef.current) {
+        mapRef.current.remove();
+      }
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div
-      ref={containerRef}
-      style={{ width: '100%', height: '100%' }}
-      id="tmc-map-container"
-    />
+    <div className="relative w-full h-full">
+      <div
+        ref={containerRef}
+        className="w-full h-full"
+        id="tmc-map-container"
+      />
+      {/* Recenter Map Button */}
+      <button
+        className="absolute top-6 right-6 z-40 bg-[#1e1e1e] border border-[#333] hover:bg-[#2a2a2a] p-3 rounded shadow-lg transition-colors group"
+        onClick={() => {
+          if (mapRef.current && targetPosRef.current) {
+            mapRef.current.flyTo({ center: targetPosRef.current, zoom: 16, pitch: 60, speed: 1.5 });
+          }
+        }}
+        title="Recenter Map on Ambulance"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-emerald-500 group-hover:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      </button>
+    </div>
   );
 }
 
