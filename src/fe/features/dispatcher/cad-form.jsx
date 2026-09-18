@@ -89,13 +89,11 @@ export default function CadForm() {
     const unit_id_param = unitId.replace(/\s/g, '-'); // e.g. "AMB 1" -> "AMB-1"
 
     try {
-      // Use the /legs endpoint which returns 3 separate polylines for each phase
-      let legsUrl = `/api/route/legs?incident_lat=${incident_lat}&incident_lng=${incident_lng}&hospital_lat=${hospital_lat}&hospital_lng=${hospital_lng}&unit_id=${encodeURIComponent(unit_id_param)}`;
-      
-      // If driver has a known location, pass it as the base
-      if (selectedDriver?.lat && selectedDriver?.lng) {
-        legsUrl += `&base_lat=${selectedDriver.lat}&base_lng=${selectedDriver.lng}`;
-      }
+      // Use the /legs endpoint which returns 3 separate polylines for each phase.
+      // Do NOT pass driver lat/lng as base — the driver's live position is wherever
+      // they are currently driving (the incident area), not their dispatch station.
+      // The /legs backend resolves base from Redis (unit registration) or uses the default.
+      const legsUrl = `/api/route/legs?incident_lat=${incident_lat}&incident_lng=${incident_lng}&hospital_lat=${hospital_lat}&hospital_lng=${hospital_lng}&unit_id=${encodeURIComponent(unit_id_param)}`;
 
       const res = await fetch(legsUrl);
       const data = await res.json();
