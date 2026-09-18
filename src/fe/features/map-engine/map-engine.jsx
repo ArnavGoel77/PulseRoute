@@ -464,7 +464,7 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
  * @param {Object} signalState - { intersection_id: 'RED'|'GREEN'|'RELEASING' }
  */
 function _applySignalFilters(map, signalState) {
-  if (!map || !map.loaded()) return;
+  if (!map || !map.isStyleLoaded()) return;
 
   const redIds      = [];
   const greenIds    = [];

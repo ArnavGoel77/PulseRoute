@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import wsClient from '../../services/websocket-client';
 import MapEngine from '../map-engine/map-engine';
 
@@ -11,9 +11,9 @@ const NYC_BOUNDS = {
 };
 
 export default function CadForm() {
+  useEffect(() => { wsClient.connect(); }, []);
   const [missionId, setMissionId] = useState('M-042');
   const [unitId, setUnitId] = useState('UNIT-1');
-  const [base, setBase] = useState('18.9300, 72.8200');
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
   const [priority, setPriority] = useState('ALS_CRITICAL');
@@ -42,13 +42,13 @@ export default function CadForm() {
     e.preventDefault();
     setFormError('');
 
-    if (!missionId || !unitId || !origin || !destination || !base) {
-      setFormError('Case ID, Unit, Base, Origin, and Destination are required.');
+    if (!missionId || !unitId || !origin || !destination) {
+      setFormError('Case ID, Unit, Origin, and Destination are required.');
       return;
     }
 
-    if (!validateCoordinates(origin) || !validateCoordinates(destination) || !validateCoordinates(base)) {
-      setFormError('Invalid Base, Origin or Destination. Must be Lat, Lng inside Mumbai bounds.');
+    if (!validateCoordinates(origin) || !validateCoordinates(destination)) {
+      setFormError('Invalid Origin or Destination. Must be Lat, Lng inside Mumbai bounds.');
       return;
     }
 
@@ -56,11 +56,10 @@ export default function CadForm() {
 
     const [start_lat, start_lng] = origin.split(',').map(s => s.trim());
     const [end_lat, end_lng] = destination.split(',').map(s => s.trim());
-    const [base_lat, base_lng] = base.split(',').map(s => s.trim());
 
 
     // Hit the backend OSRM proxy
-    fetch(`/api/route?start_lat=${start_lat}&start_lng=${start_lng}&end_lat=${end_lat}&end_lng=${end_lng}&base_lat=${base_lat}&base_lng=${base_lng}`)
+    fetch(`/api/route?start_lat=${start_lat}&start_lng=${start_lng}&end_lat=${end_lat}&end_lng=${end_lng}&unit_id=${unitId}`)
       .then(res => res.json())
       .then(data => {
         if (data.error) {
@@ -140,17 +139,6 @@ export default function CadForm() {
                     className="w-full bg-[#1e1e1e] border border-[#2a2a2a] rounded p-2 text-sm focus:outline-none focus:border-emerald-500 font-mono"
                   />
                 </div>
-              </div>
-
-              <div className="mb-4">
-                <label className="text-[#8b8b8b] text-xs font-semibold mb-2 block uppercase">Base (Lat, Lng)</label>
-                <input 
-                  type="text" 
-                  value={base}
-                  onChange={(e) => setBase(e.target.value)}
-                  placeholder="18.9300, 72.8200"
-                  className="w-full bg-[#1e1e1e] border border-[#2a2a2a] rounded p-2 text-sm focus:outline-none focus:border-emerald-500 font-mono"
-                />
               </div>
 
               <div className="mb-4">

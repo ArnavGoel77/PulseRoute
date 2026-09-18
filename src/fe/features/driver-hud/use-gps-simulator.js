@@ -47,7 +47,7 @@ export function useGPSSimulator() {
   useEffect(() => {
     const unsubMission = wsClient.on('MISSION_START', ({ path_polyline, mission_id }) => {
       // Lock onto the first mission received. Ignore other missions.
-      if (activeMissionId && activeMissionId !== mission_id) return;
+      if (activeMissionId) return;
       
       if (path_polyline) {
         const coords = decodePolyline(path_polyline);

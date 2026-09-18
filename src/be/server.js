@@ -14,6 +14,7 @@ const { WebSocketServer } = require('ws');
 // --- Route Imports (Dev 3 Domain) ---
 const osrmRouter = require('./routes/osrm');
 const tomtomRouter = require('./routes/tomtom');
+const unitRouter = require('./routes/unit');
 
 // --- WebSocket / Telemetry Init (Dev 2 Domain) ---
 const { initTelemetry } = require('./sockets/telemetry');
@@ -51,6 +52,7 @@ app.use((req, res, next) => {
 // snake_case routes per the .antigravityrules domain contract
 app.use('/api/route', osrmRouter);
 app.use('/api/incidents', tomtomRouter);
+app.use('/api/unit', unitRouter);
 
 // Health check — used by Render to confirm the service is alive
 app.get('/api/health', (req, res) => {

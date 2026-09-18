@@ -7,10 +7,32 @@ export default function DriverHud() {
   useEffect(() => { wsClient.connect(); }, []);
   const { currentLocation, speed, eta, distanceLeft, activeMissionId, turnInstruction, turnDistance } = useGPSSimulator();
   
-  // State to simulate the preemption banner (GREEN or ALL_RED)
   const [signalStatus, setSignalStatus] = useState(null);
 
   const [recenterTrigger, setRecenterTrigger] = useState(0);
+  const [baseLocation, setBaseLocation] = useState('18.9300, 72.8200');
+  const [isSavingBase, setIsSavingBase] = useState(false);
+
+  const handleSaveBase = async () => {
+    setIsSavingBase(true);
+    const parts = baseLocation.split(',');
+    if (parts.length === 2) {
+      try {
+        await fetch('/api/unit/base', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            unit_id: 'UNIT-1',
+            base_lat: parts[0].trim(),
+            base_lng: parts[1].trim()
+          })
+        });
+      } catch (err) {
+        console.error('Failed to save base location', err);
+      }
+    }
+    setIsSavingBase(false);
+  };
 
   useEffect(() => {
     const unsubPreempt = wsClient.on('SIGNAL_PREEMPT', () => {
@@ -84,6 +106,26 @@ export default function DriverHud() {
           </div>
         )}
 
+        {/* Base Location Settings (Bottom Left) */}
+        <div className="absolute bottom-8 left-6 z-30 flex flex-col space-y-2 bg-[#1e1e1e]/90 backdrop-blur-md p-3 rounded-xl border border-[#333] shadow-xl w-64">
+          <label className="text-[#8b8b8b] text-[10px] font-bold tracking-widest uppercase">Base Location (Lat, Lng)</label>
+          <div className="flex space-x-2">
+            <input 
+              type="text" 
+              value={baseLocation}
+              onChange={(e) => setBaseLocation(e.target.value)}
+              className="flex-1 bg-[#0b0b0b] border border-[#333] rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-emerald-500"
+            />
+            <button 
+              onClick={handleSaveBase}
+              disabled={isSavingBase}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded transition-colors"
+            >
+              {isSavingBase ? '...' : 'SAVE'}
+            </button>
+          </div>
+        </div>
+
         {/* Floating Action Buttons Container (Bottom Right) */}
         <div className="absolute bottom-8 right-6 z-30 flex flex-col items-center space-y-4">
           
@@ -94,7 +136,7 @@ export default function DriverHud() {
             title="Recenter Map"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2L2 22l10-4 10 4L12 2z" />
             </svg>
           </button>
 
