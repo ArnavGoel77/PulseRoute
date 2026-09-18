@@ -143,15 +143,24 @@ export default function CadForm() {
       setMissionId(generateMissionId());
       setUnitId('');
       setOrigin('');
-      setDestination('');
-
+      setMissionId(`M-0${Math.floor(Math.random() * 90) + 10}`);
     } catch (err) {
       console.error(err);
-      setFormError('Failed to contact backend for routing. Is the backend running?');
+      setFormError('Failed to contact backend for routing. Is the server running?');
     }
-
-    setIsDispatching(false);
+    setLoading(false);
   };
+
+  const handleReset = () => {
+    wsClient.send({ type: 'RESET_SIMULATION' });
+  };
+
+  useEffect(() => {
+    const unsubReset = wsClient.on('RESET_SIMULATION', () => {
+      setDispatchedMissions([]);
+    });
+    return () => unsubReset();
+  }, []);
 
   return (
     <div className="w-screen h-screen bg-[#0b0b0b] text-[#f5f5f5] flex flex-col font-sans overflow-hidden">
@@ -258,19 +267,17 @@ export default function CadForm() {
                 </div>
               </label>
 
-              {formError && (
-                <div className="p-3 bg-red-500/20 border border-red-500 rounded text-red-400 text-sm">
-                  {formError}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={isDispatching}
-                className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-900 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded transition-colors shadow-lg"
-              >
-                {isDispatching ? 'ROUTING...' : 'START MISSION'}
-              </button>
+              <div className="mt-2 shrink-0 flex flex-col gap-3">
+                {formError && <div className="p-3 bg-red-500/20 border border-red-500 rounded text-red-400 text-sm">{formError}</div>}
+                <button type="submit" disabled={loading}
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold py-4 rounded transition-colors shadow-lg">
+                  {loading ? 'ROUTING...' : 'START MISSION'}
+                </button>
+                <button type="button" onClick={handleReset}
+                  className="w-full bg-red-900/30 hover:bg-red-900/60 border border-red-700 text-red-400 font-bold py-3 rounded transition-colors">
+                  STOP / RESET SIMULATION
+                </button>
+              </div>
             </form>
           </div>
 

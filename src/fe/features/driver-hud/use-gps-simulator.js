@@ -145,7 +145,20 @@ export function useGPSSimulator(driverId = null) {
       if (paused !== undefined) setDemoPaused(paused);
     });
 
-    return () => { unsubMission(); unsubPhase(); unsubRoute(); unsubDemoSpeed(); };
+    const unsubReset = wsClient.on('RESET_SIMULATION', () => {
+      setMissionActive(false);
+      setActiveMissionId(null);
+      missionIdRef.current = null;
+      setRoute([]);
+      setRouteIndex(0);
+      legsRef.current = { to_incident: [], to_hospital: [], to_base: [] };
+      setTurnInstruction('Waiting for mission...');
+      setEta('--');
+      setDistanceLeft('--');
+      setSpeed(0);
+    });
+
+    return () => { unsubMission(); unsubPhase(); unsubRoute(); unsubDemoSpeed(); unsubReset(); };
   }, []);
 
   // Main GPS tick loop

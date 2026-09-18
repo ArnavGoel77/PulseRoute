@@ -405,6 +405,14 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
       }, 3000);
     });
 
+    const unsubReset = wsClient.on('RESET_SIMULATION', () => {
+      const map = mapRef.current;
+      if (!map || !mapLoadedRef.current) return;
+      map.getSource('roadblocks')?.setData({ type: 'FeatureCollection', features: [] });
+      map.getSource('intersections')?.setData({ type: 'FeatureCollection', features: [] });
+      signalStateRef.current = {};
+    });
+
     const unsubDriver = wsClient.on('DRIVER_REGISTERED', ({ driver_id, lat, lng }) => {
       driverStore.addOrUpdate(driver_id, lat, lng);
       _upsertDriverMarker(driver_id, [lng, lat], mapRef.current);

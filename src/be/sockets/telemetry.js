@@ -212,6 +212,13 @@ function initTelemetry(wss) {
         }
         return;
       }
+      // ── RESET_SIMULATION: clear all missions
+      if (parsed.type === 'RESET_SIMULATION') {
+        for (const key in activeMissions) delete activeMissions[key];
+        broadcast({ type: 'RESET_SIMULATION' });
+        console.log(`[Telemetry] RESET_SIMULATION triggered. All missions cleared.`);
+        return;
+      }
     });
 
     ws.on('close', () => {
