@@ -12,7 +12,8 @@ const NYC_BOUNDS = {
 
 export default function CadForm() {
   const [missionId, setMissionId] = useState('M-042');
-  const [unitId, setUnitId] = useState('MED 14');
+  const [unitId, setUnitId] = useState('UNIT-1');
+  const [base, setBase] = useState('18.9300, 72.8200');
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
   const [priority, setPriority] = useState('ALS_CRITICAL');
@@ -41,13 +42,13 @@ export default function CadForm() {
     e.preventDefault();
     setFormError('');
 
-    if (!missionId || !unitId || !origin || !destination) {
-      setFormError('Case ID, Unit, Origin, and Destination are required.');
+    if (!missionId || !unitId || !origin || !destination || !base) {
+      setFormError('Case ID, Unit, Base, Origin, and Destination are required.');
       return;
     }
 
-    if (!validateCoordinates(origin) || !validateCoordinates(destination)) {
-      setFormError('Invalid Origin or Destination. Must be Lat, Lng inside Mumbai bounds.');
+    if (!validateCoordinates(origin) || !validateCoordinates(destination) || !validateCoordinates(base)) {
+      setFormError('Invalid Base, Origin or Destination. Must be Lat, Lng inside Mumbai bounds.');
       return;
     }
 
@@ -55,6 +56,7 @@ export default function CadForm() {
 
     const [start_lat, start_lng] = origin.split(',').map(s => s.trim());
     const [end_lat, end_lng] = destination.split(',').map(s => s.trim());
+    const [base_lat, base_lng] = base.split(',').map(s => s.trim());
 
     // Mock ambulance base (e.g., Colaba Fire Station) for 4-point route
     const base_lat = 18.9100;
@@ -122,14 +124,14 @@ export default function CadForm() {
 
             <form onSubmit={handleDispatch} className="flex flex-col">
               
-              <div className="mb-5 flex space-x-4">
+              <div className="mb-4 flex space-x-4">
                 <div className="flex-1">
                   <label className="text-[#8b8b8b] text-xs font-semibold mb-2 block uppercase">Case ID</label>
                   <input 
                     type="text" 
                     value={missionId}
                     onChange={(e) => setMissionId(e.target.value)}
-                    className="w-full bg-[#1e1e1e] border border-[#2a2a2a] rounded p-3 text-sm focus:outline-none focus:border-emerald-500 font-mono text-emerald-400"
+                    className="w-full bg-[#1e1e1e] border border-[#2a2a2a] rounded p-2 text-sm focus:outline-none focus:border-emerald-500 font-mono text-emerald-400"
                   />
                 </div>
                 <div className="flex-1">
@@ -138,30 +140,41 @@ export default function CadForm() {
                     type="text" 
                     value={unitId}
                     onChange={(e) => setUnitId(e.target.value)}
-                    className="w-full bg-[#1e1e1e] border border-[#2a2a2a] rounded p-3 text-sm focus:outline-none focus:border-emerald-500 font-mono"
+                    className="w-full bg-[#1e1e1e] border border-[#2a2a2a] rounded p-2 text-sm focus:outline-none focus:border-emerald-500 font-mono"
                   />
                 </div>
               </div>
 
-              <div className="mb-5">
+              <div className="mb-4">
+                <label className="text-[#8b8b8b] text-xs font-semibold mb-2 block uppercase">Base (Lat, Lng)</label>
+                <input 
+                  type="text" 
+                  value={base}
+                  onChange={(e) => setBase(e.target.value)}
+                  placeholder="18.9300, 72.8200"
+                  className="w-full bg-[#1e1e1e] border border-[#2a2a2a] rounded p-2 text-sm focus:outline-none focus:border-emerald-500 font-mono"
+                />
+              </div>
+
+              <div className="mb-4">
                 <label className="text-[#8b8b8b] text-xs font-semibold mb-2 block uppercase">Origin (Lat, Lng)</label>
                 <input 
                   type="text" 
                   value={origin}
                   onChange={(e) => setOrigin(e.target.value)}
                   placeholder="18.9221, 72.8234"
-                  className="w-full bg-[#1e1e1e] border border-[#2a2a2a] rounded p-3 text-sm focus:outline-none focus:border-emerald-500 font-mono"
+                  className="w-full bg-[#1e1e1e] border border-[#2a2a2a] rounded p-2 text-sm focus:outline-none focus:border-emerald-500 font-mono"
                 />
               </div>
 
-              <div className="mb-8">
+              <div className="mb-6">
                 <label className="text-[#8b8b8b] text-xs font-semibold mb-2 block uppercase">Destination (Lat, Lng)</label>
                 <input 
                   type="text" 
                   value={destination}
                   onChange={(e) => setDestination(e.target.value)}
                   placeholder="18.9451, 72.8277"
-                  className="w-full bg-[#1e1e1e] border border-[#2a2a2a] rounded p-3 text-sm focus:outline-none focus:border-emerald-500 font-mono"
+                  className="w-full bg-[#1e1e1e] border border-[#2a2a2a] rounded p-2 text-sm focus:outline-none focus:border-emerald-500 font-mono"
                 />
               </div>
 
@@ -182,7 +195,7 @@ export default function CadForm() {
                 </div>
               </label>
 
-              <label className="flex items-start space-x-3 mb-8 cursor-pointer">
+              <label className="flex items-start space-x-3 mb-6 cursor-pointer">
                 <input 
                   type="radio" 
                   name="priority" 
@@ -197,7 +210,7 @@ export default function CadForm() {
                 </div>
               </label>
 
-              <div className="mt-2">
+              <div className="mt-2 shrink-0">
                 {formError && (
                   <div className="mb-4 p-3 bg-red-500/20 border border-red-500 rounded text-red-400 text-sm">
                     {formError}
@@ -214,7 +227,7 @@ export default function CadForm() {
           </div>
 
           {/* Active Missions Log */}
-          <div className="p-6 border-t border-[#2a2a2a] bg-[#1a1a1a] shrink-0 h-48 overflow-y-auto">
+          <div className="p-4 border-t border-[#2a2a2a] bg-[#1a1a1a] shrink-0 h-40 overflow-y-auto">
              <p className="text-[#8b8b8b] text-xs font-semibold tracking-widest mb-4 uppercase">Dispatched Missions</p>
              {dispatchedMissions.length === 0 ? (
                <p className="text-[#444] text-xs italic font-mono">No missions currently active.</p>

@@ -131,6 +131,10 @@ class WebSocketClient {
     if (payload.type === 'OBSTRUCTION') {
       return this._emit('INCIDENT_LOGGED', payload);
     }
+    // DEMO_SPEED_CONTROL: { speedMult, paused }
+    if (payload.speedMult !== undefined && payload.paused !== undefined) {
+      return this._emit('DEMO_SPEED_CONTROL', payload);
+    }
   }
 
   _emit(eventName, payload) {

@@ -55,6 +55,7 @@ router.get('/', async (req, res) => {
     }
 
     // Strict snake_case namespace for Redis key
+    // Support 4-point routing cache key format
     let cache_key = `osrm_route:${start_lat},${start_lng}:${end_lat},${end_lng}`;
     if (base_lat && base_lng) {
       cache_key += `:base_${base_lat},${base_lng}`;
