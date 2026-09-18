@@ -86,12 +86,8 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
 
   // ── Map Initialization ──────────────────────────────────────────────────────
   useEffect(() => {
-    // Initialize signal state: all 20 nodes start RED
-    const initState = {};
-    INTERSECTION_NODES_GEOJSON.features.forEach(f => {
-      initState[f.properties.intersection_id] = 'RED';
-    });
-    signalStateRef.current = initState;
+    // signalStateRef is initialized empty; populated on MISSION_START
+    signalStateRef.current = {};
 
     // D4-4: Create the map with fixed TMC perspective
     const map = new mapboxgl.Map({
@@ -231,22 +227,9 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
         if (!roadblockActiveRef.current) return;
 
         const { lng, lat } = e.lngLat;
-
-        // Drop marker on map via setData (not re-creating layers)
-        const existing = map.getSource('roadblocks')._data;
-        const newFeatures = [
-          ...(existing?.features || []),
-          {
-            type: 'Feature',
-            geometry: { type: 'Point', coordinates: [lng, lat] }
-          }
-        ];
-        map.getSource('roadblocks').setData({
-          type: 'FeatureCollection',
-          features: newFeatures
-        });
-
-        // Fire INCIDENT_LOGGED over WebSocket per the WS contract
+        
+        // Fire INCIDENT_LOGGED over WebSocket per the WS contract.
+        // The local WS listener will catch the broadcast and draw it so all clients sync.
         wsClient.send({ lat, lng, type: 'OBSTRUCTION' });
 
         // Notify parent so it can toggle roadblock mode off
@@ -295,7 +278,7 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
       lastTelemetryRef.current = Date.now();
     });
 
-    // MISSION_START → draw the route polyline on the map
+    // MISSION_START → draw the route polyline on the map and generate intersections
     const unsubMission = wsClient.on('MISSION_START', ({ path_polyline }) => {
       if (!path_polyline || !mapRef.current) return;
       const coords = decodePolyline(path_polyline);
@@ -307,6 +290,26 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
       if (coords.length > 0) {
         mapRef.current.flyTo({ center: coords[0], zoom: 13, speed: 1.2 });
       }
+
+      // Generate nodes dynamically along the route (every 15 coords)
+      const features = [];
+      const newSignalState = {};
+      for (let i = 5; i < coords.length - 2; i += 15) {
+        const id = `node-${i}`;
+        features.push({
+          type: 'Feature',
+          properties: { intersection_id: id, signal_phase: 'RED' },
+          geometry: { type: 'Point', coordinates: coords[i] }
+        });
+        newSignalState[id] = 'RED';
+      }
+      
+      signalStateRef.current = newSignalState;
+      mapRef.current.getSource('intersections')?.setData({
+        type: 'FeatureCollection',
+        features
+      });
+      _applySignalFilters(mapRef.current, signalStateRef.current);
     });
 
     // ROUTE_UPDATED → update the route polyline on reroute
@@ -316,6 +319,24 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
       mapRef.current.getSource('route')?.setData({
         type: 'Feature',
         geometry: { type: 'LineString', coordinates: coords }
+      });
+    });
+
+    // INCIDENT_LOGGED → draw roadblock marker
+    const unsubIncident = wsClient.on('INCIDENT_LOGGED', ({ lat, lng }) => {
+      const map = mapRef.current;
+      if (!map || !map.loaded()) return;
+      const existing = map.getSource('roadblocks')?._data;
+      const newFeatures = [
+        ...(existing?.features || []),
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [lng, lat] }
+        }
+      ];
+      map.getSource('roadblocks')?.setData({
+        type: 'FeatureCollection',
+        features: newFeatures
       });
     });
 
@@ -351,6 +372,7 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
       unsubRoute();
       unsubPreempt();
       unsubRelease();
+      unsubIncident();
       cancelAnimationFrame(animFrameRef.current);
       clearInterval(flashTimerRef.current);
       Object.values(orangeTimersRef.current).forEach(clearTimeout);

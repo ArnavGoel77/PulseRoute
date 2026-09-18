@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useGPSSimulator } from './use-gps-simulator';
 import wsClient from '../../services/websocket-client';
+import MapEngine from '../map-engine/map-engine';
 
 export default function DriverHud() {
   useEffect(() => { wsClient.connect(); }, []);
@@ -42,20 +43,9 @@ export default function DriverHud() {
           </div>
         )}
 
-        {/* Map View / 3D Pitched City (Placeholder) */}
+        {/* Map View / MapEngine */}
         <div className="flex-1 relative bg-[#1a1a1a] overflow-hidden">
-          {/* Simulated Perspective Grid */}
-          <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] [transform:rotateX(60deg)_scale(2)] origin-bottom" />
-          
-          {/* Vehicle Position Halo */}
-          <div className="absolute bottom-32 left-1/2 -translate-x-1/2">
-            <div className="w-16 h-16 bg-emerald-500/20 rounded-full animate-ping absolute -inset-2" />
-            <div className="w-12 h-12 bg-[#2a2a2a] border-2 border-emerald-500 rounded-full flex items-center justify-center relative z-10 shadow-[0_0_20px_rgba(16,185,129,0.5)]">
-               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-emerald-500 transform -rotate-45" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-              </svg>
-            </div>
-          </div>
+          <MapEngine isRoadblockModeActive={false} />
 
           {/* FAB / Roadblock Warning */}
           <button 

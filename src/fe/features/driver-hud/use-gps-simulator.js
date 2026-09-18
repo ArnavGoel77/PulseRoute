@@ -30,6 +30,7 @@ export function useGPSSimulator() {
   const [speed, setSpeed] = useState(0);
   const [eta, setEta] = useState('4m 20s');
   const [distanceLeft, setDistanceLeft] = useState('2.1 mi');
+  const [missionActive, setMissionActive] = useState(false);
 
   // Listen for route updates
   useEffect(() => {
@@ -38,6 +39,7 @@ export function useGPSSimulator() {
         const coords = decodePolyline(path_polyline);
         setRoute(coords);
         setCurrentLocation(coords[0]);
+        setMissionActive(true);
       }
     });
 
@@ -56,6 +58,8 @@ export function useGPSSimulator() {
   }, []);
   
   useEffect(() => {
+    if (!missionActive) return;
+
     let index = 0;
     const interval = setInterval(() => {
       if (route.length === 0) return;
@@ -74,7 +78,7 @@ export function useGPSSimulator() {
     }, 1000); // 1Hz updates as per spec
 
     return () => clearInterval(interval);
-  }, [route]);
+  }, [route, missionActive]);
 
   return {
     currentLocation,
