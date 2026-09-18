@@ -58,7 +58,7 @@ router.get('/', async (req, res) => {
     // Support 4-point routing cache key format
     let cache_key = `osrm_route:${start_lat},${start_lng}:${end_lat},${end_lng}`;
     if (base_lat && base_lng) {
-      cache_key = `osrm_route:${base_lat},${base_lng}:${start_lat},${start_lng}:${end_lat},${end_lng}:${base_lat},${base_lng}`;
+      cache_key += `:base_${base_lat},${base_lng}`;
     }
     if (detour_lat && detour_lng) {
       cache_key += `:${detour_lat},${detour_lng}`;
@@ -84,19 +84,22 @@ router.get('/', async (req, res) => {
 
     // 2. Fetch from OSRM Public API
     // Note: OSRM expects coordinates in {longitude},{latitude} order
-    let coords_str = "";
+    let coords_str = '';
+    
     if (base_lat && base_lng) {
-      coords_str += `${base_lng},${base_lat};`;
+      coords_str += `${base_lng},${base_lat};`; // Start at Base
     }
-    coords_str += `${start_lng},${start_lat}`;
     
+    coords_str += `${start_lng},${start_lat}`; // Incident (Origin)
+
     if (detour_lat && detour_lng) {
-      coords_str += `;${detour_lng},${detour_lat}`;
+      coords_str += `;${detour_lng},${detour_lat}`; // Detour (if any)
     }
-    coords_str += `;${end_lng},${end_lat}`;
     
-    if (base_lat && base_lng && !detour_lat) {
-      coords_str += `;${base_lng},${base_lat}`;
+    coords_str += `;${end_lng},${end_lat}`; // Hospital (Destination)
+    
+    if (base_lat && base_lng) {
+      coords_str += `;${base_lng},${base_lat}`; // Return to Base
     }
     
     const osrm_url = `http://router.project-osrm.org/route/v1/driving/${coords_str}?overview=full&geometries=polyline`;
@@ -115,7 +118,8 @@ router.get('/', async (req, res) => {
       path_polyline: primary_route.geometry,
       decoded_path: decodePolyline(primary_route.geometry),
       distance_meters: primary_route.distance,
-      duration_seconds: primary_route.duration
+      duration_seconds: primary_route.duration,
+      route_legs: primary_route.legs // Provide phase lengths to Dev 1
     };
 
     // 4. Save to Redis Cache (Expire after 30 seconds)

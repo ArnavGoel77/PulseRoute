@@ -58,6 +58,7 @@ export default function CadForm() {
     const [end_lat, end_lng] = destination.split(',').map(s => s.trim());
     const [base_lat, base_lng] = base.split(',').map(s => s.trim());
 
+
     // Hit the backend OSRM proxy
     fetch(`/api/route?start_lat=${start_lat}&start_lng=${start_lng}&end_lat=${end_lat}&end_lng=${end_lng}&base_lat=${base_lat}&base_lng=${base_lng}`)
       .then(res => res.json())
