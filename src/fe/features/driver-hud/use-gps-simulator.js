@@ -32,17 +32,27 @@ export function useGPSSimulator() {
   const [eta, setEta] = useState('--');
   const [distanceLeft, setDistanceLeft] = useState('--');
   const [missionActive, setMissionActive] = useState(false);
+  
+  // MERGED STATES
+  const [routeIndex, setRouteIndex] = useState(0);
+  const [activeMissionId, setActiveMissionId] = useState(null);
+  
+  const [turnInstruction, setTurnInstruction] = useState('Follow Route');
+  const [turnDistance, setTurnDistance] = useState('--');
+  
   const [demoSpeed, setDemoSpeed] = useState(1);
   const [demoPaused, setDemoPaused] = useState(false);
-  const [routeIndex, setRouteIndex] = useState(0);
-  const [activeMissionId, setActiveMissionId] = useState('M-042');
 
   // Listen for route updates
   useEffect(() => {
     const unsubMission = wsClient.on('MISSION_START', ({ path_polyline, mission_id }) => {
+      // Lock onto the first mission received. Ignore other missions.
+      if (activeMissionId && activeMissionId !== mission_id) return;
+      
       if (path_polyline) {
         const coords = decodePolyline(path_polyline);
         if (mission_id) setActiveMissionId(mission_id);
+        
         // Anti-teleport: Prepend current location so we drive there smoothly
         setRoute([currentLocation, ...coords]);
         setRouteIndex(0);
@@ -50,7 +60,9 @@ export function useGPSSimulator() {
       }
     });
 
-    const unsubRoute = wsClient.on('ROUTE_UPDATED', ({ new_polyline }) => {
+    const unsubRoute = wsClient.on('ROUTE_UPDATED', ({ new_polyline, mission_id }) => {
+      if (activeMissionId && activeMissionId !== mission_id) return;
+
       if (new_polyline) {
         const coords = decodePolyline(new_polyline);
         // Anti-teleport: Prepend current location
@@ -69,16 +81,18 @@ export function useGPSSimulator() {
       unsubRoute();
       unsubDemoSpeed();
     };
-  }, [currentLocation]); // Depend on currentLocation for accurate closure state
+  }, [currentLocation, activeMissionId]); 
   
   useEffect(() => {
-    if (!missionActive || demoPaused) return;
+    if (!missionActive || !activeMissionId || demoPaused) return;
 
     const intervalTime = 1000 / demoSpeed;
 
     const interval = setInterval(() => {
       if (route.length === 0 || routeIndex >= route.length - 1) {
         setSpeed(0);
+        setTurnInstruction('Arrived');
+        setTurnDistance('0 ft');
         return; // Reached end of route
       }
       
@@ -91,13 +105,14 @@ export function useGPSSimulator() {
       const simSpeedMph = Math.floor(Math.random() * 10) + 30; // 30-40 mph
       setSpeed(simSpeedMph);
       
-      // Calculate dynamic telemetry
+      // 1. Calculate dynamic telemetry (distance & ETA)
       const remainingRoute = route.slice(nextIndex);
       if (remainingRoute.length > 1) {
         try {
           const line = turf.lineString(remainingRoute);
           const distKm = turf.length(line, { units: 'kilometers' });
-          setDistanceLeft(`${distKm.toFixed(1)} km`);
+          const distMi = distKm * 0.621371;
+          setDistanceLeft(`${distMi.toFixed(1)} mi`);
           
           // ETA: (dist in km) / (speed in km/h) -> hours
           const speedKmh = simSpeedMph * 1.60934;
@@ -110,8 +125,50 @@ export function useGPSSimulator() {
         } catch (e) {
            console.error("Turf distance calculation error", e);
         }
+        
+        // 2. Calculate next turn instruction using bearing
+        try {
+          let foundTurn = false;
+          let turnIdx = -1;
+          let currentBearing = turf.bearing(turf.point(remainingRoute[0]), turf.point(remainingRoute[1]));
+          
+          for (let i = 1; i < remainingRoute.length - 1; i++) {
+            const nextBearing = turf.bearing(turf.point(remainingRoute[i]), turf.point(remainingRoute[i+1]));
+            const bearingDiff = nextBearing - currentBearing;
+            // Normalize between -180 and 180
+            const normalizedDiff = (bearingDiff + 540) % 360 - 180; 
+            
+            if (Math.abs(normalizedDiff) > 35) { // Threshold for a turn
+              turnIdx = i;
+              setTurnInstruction(normalizedDiff > 0 ? 'Turn right' : 'Turn left');
+              foundTurn = true;
+              break;
+            }
+            currentBearing = nextBearing;
+          }
+          
+          if (foundTurn && turnIdx > 0) {
+            const routeToTurn = remainingRoute.slice(0, turnIdx + 1);
+            if (routeToTurn.length > 1) {
+              const turnLine = turf.lineString(routeToTurn);
+              const turnDistKm = turf.length(turnLine, { units: 'kilometers' });
+              const turnDistFt = Math.floor(turnDistKm * 3280.84);
+              if (turnDistFt < 100) {
+                setTurnDistance('now');
+              } else {
+                setTurnDistance(`in ${turnDistFt} ft`);
+              }
+            }
+          } else {
+            setTurnInstruction('Follow Route');
+            setTurnDistance('--');
+          }
+        } catch (e) {
+          console.error("Turf bearing calculation error", e);
+        }
+
       } else {
-        setDistanceLeft('0.0 km');
+        setDistanceLeft('0.0 mi');
         setEta('Arrived');
       }
       
@@ -121,7 +178,7 @@ export function useGPSSimulator() {
         lng: nextLoc[0], 
         speed: simSpeedMph 
       });
-    }, intervalTime); // 1Hz scaled by demoSpeed
+    }, intervalTime); 
 
     return () => clearInterval(interval);
   }, [route, routeIndex, missionActive, activeMissionId, demoSpeed, demoPaused]);
@@ -131,6 +188,8 @@ export function useGPSSimulator() {
     speed,
     eta,
     distanceLeft,
-    activeMissionId
+    activeMissionId,
+    turnInstruction,
+    turnDistance
   };
 }

@@ -46,6 +46,11 @@ export default function CadForm() {
       return;
     }
 
+    if (!validateCoordinates(origin) || !validateCoordinates(destination)) {
+      setFormError('Invalid Origin or Destination. Must be Lat, Lng inside Mumbai bounds.');
+      return;
+    }
+
     wsClient.connect();
 
     const [start_lat, start_lng] = origin.split(',').map(s => s.trim());
