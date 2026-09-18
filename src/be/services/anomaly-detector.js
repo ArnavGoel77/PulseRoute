@@ -38,9 +38,10 @@ incidentEmitter.on('OBSTRUCTION', async (payload) => {
           
           for (const key of keys) {
             const parts = key.split(':');
-            if (parts.length === 3) {
-              const startParts = parts[1].split(',');
-              const destParts = parts[2].split(',');
+            if (parts.length === 3 || parts.length === 5) {
+              const isFourPoint = parts.length === 5;
+              const startParts = isFourPoint ? parts[2].split(',') : parts[1].split(',');
+              const destParts = isFourPoint ? parts[3].split(',') : parts[2].split(',');
               
               const sLat = parseFloat(startParts[0]);
               const sLng = parseFloat(startParts[1]);

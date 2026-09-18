@@ -10,6 +10,8 @@ export default function DriverHud() {
   // State to simulate the preemption banner (GREEN or ALL_RED)
   const [signalStatus, setSignalStatus] = useState(null);
 
+  const [recenterTrigger, setRecenterTrigger] = useState(0);
+
   useEffect(() => {
     const unsubPreempt = wsClient.on('SIGNAL_PREEMPT', () => {
       setSignalStatus('GREEN');
@@ -28,42 +30,77 @@ export default function DriverHud() {
     <div className="bg-slate-900 text-white min-h-screen w-full flex justify-center">
       <div className="w-full max-w-md h-screen relative bg-[#0b0b0b] overflow-hidden flex flex-col shadow-2xl border-x border-slate-800">
         
-        {/* Top Instruction Panel */}
-        <div className="bg-[#141414] border-b border-[#2a2a2a] p-6 z-20 flex flex-col shadow-md">
-          <p className="text-[#8b8b8b] text-[10px] font-semibold tracking-[0.15em] mb-6 uppercase">PulseRoute Navigate</p>
-          <div className="flex items-center space-x-4">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-white" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8-8-8z" />
-            </svg>
-            <div className="flex flex-col">
-              <h1 className="text-[28px] leading-tight font-bold text-[#f5f5f5]">{turnInstruction}</h1>
-              {turnDistance !== '--' && <p className="text-[15px] text-[#8b8b8b] mt-1">{turnDistance}</p>}
+        {/* Full Screen Map Container */}
+        <div className="absolute inset-0 z-0 bg-[#1a1a1a]">
+          <MapEngine isRoadblockModeActive={false} recenterTrigger={recenterTrigger} />
+        </div>
+
+        {/* Top Google Maps Style Card Overlay */}
+        <div className="absolute top-6 left-4 right-4 z-20">
+          <div className="bg-[#1e1e1e]/95 backdrop-blur-md rounded-xl p-5 shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-[#333]">
+            <div className="flex items-center space-x-4">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8-8-8z" />
+              </svg>
+              <div className="flex flex-col min-w-0">
+                <h1 className="text-[24px] leading-tight font-bold text-[#f5f5f5] truncate">{turnInstruction}</h1>
+                {turnDistance !== '--' && <p className="text-[15px] text-[#8b8b8b] font-medium mt-0.5">{turnDistance}</p>}
+              </div>
+            </div>
+            
+            <div className="w-full h-px bg-[#333] my-4" />
+            
+            <div className="flex justify-between items-center px-1">
+              <div className="flex flex-col">
+                <p className="text-[#8b8b8b] text-[10px] font-bold tracking-widest uppercase mb-1">ETA</p>
+                <p className="text-[17px] font-bold text-emerald-400">{eta}</p>
+              </div>
+              <div className="w-px h-8 bg-[#333]" />
+              <div className="flex flex-col">
+                <p className="text-[#8b8b8b] text-[10px] font-bold tracking-widest uppercase mb-1">Dist</p>
+                <p className="text-[17px] font-bold text-[#f5f5f5]">{distanceLeft}</p>
+              </div>
+              <div className="w-px h-8 bg-[#333]" />
+              <div className="flex flex-col">
+                <p className="text-[#8b8b8b] text-[10px] font-bold tracking-widest uppercase mb-1">Speed</p>
+                <p className="text-[17px] font-bold text-[#f5f5f5]">{speed} kph</p>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Preemption Banner */}
+        {/* Preemption Banner (Floating below top card) */}
         {signalStatus && (
-          <div className="absolute top-[140px] left-1/2 -translate-x-1/2 w-[90%] py-3 px-4 rounded-md flex items-center shadow-lg z-30 bg-[#2b8a3e] border border-[#2b8a3e]">
+          <div className="absolute top-[180px] left-1/2 -translate-x-1/2 w-[90%] py-3 px-4 rounded-lg flex items-center shadow-2xl z-30 bg-emerald-600 border border-emerald-400">
             {/* Traffic Light Icon */}
-            <div className="flex flex-col items-center justify-between w-3 h-7 bg-black rounded-[4px] p-[2px] mr-3 border border-[#444]">
-              <div className="w-1.5 h-1.5 rounded-full bg-red-600 opacity-30"></div>
-              <div className="w-1.5 h-1.5 rounded-full bg-yellow-500 opacity-30"></div>
-              <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_4px_#22c55e]"></div>
+            <div className="flex flex-col items-center justify-between w-4 h-9 bg-black rounded p-[2px] mr-4 border border-[#444]">
+              <div className="w-2 h-2 rounded-full bg-red-600 opacity-20"></div>
+              <div className="w-2 h-2 rounded-full bg-yellow-500 opacity-20"></div>
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_#10b981]"></div>
             </div>
-            <p className="font-semibold text-sm tracking-wide text-white uppercase">
-              PREEMPTED: {signalStatus} IN 12s
+            <p className="font-bold text-sm tracking-wide text-white uppercase">
+              PREEMPTED: {signalStatus} IN 10s
             </p>
           </div>
         )}
 
-        {/* Map View / MapEngine */}
-        <div className="flex-1 relative bg-[#1a1a1a] overflow-hidden">
-          <MapEngine isRoadblockModeActive={false} />
-
-          {/* FAB / Roadblock Warning */}
+        {/* Floating Action Buttons Container (Bottom Right) */}
+        <div className="absolute bottom-8 right-6 z-30 flex flex-col items-center space-y-4">
+          
+          {/* Recenter Button */}
           <button 
-            className="absolute bottom-6 right-6 w-16 h-16 bg-red-600 hover:bg-red-500 transition-colors rounded-full flex flex-col items-center justify-center shadow-2xl border-2 border-red-400 z-30"
+            className="w-14 h-14 bg-[#1e1e1e]/90 hover:bg-[#2a2a2a] backdrop-blur transition-colors rounded-full flex items-center justify-center shadow-xl border border-[#333]"
+            onClick={() => setRecenterTrigger(Date.now())}
+            title="Recenter Map"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+
+          {/* Block / Panic Button */}
+          <button 
+            className="w-16 h-16 bg-red-600 hover:bg-red-500 transition-colors rounded-full flex flex-col items-center justify-center shadow-[0_0_20px_rgba(220,38,38,0.4)] border-2 border-red-400"
             onClick={() => {
               if (activeMissionId) {
                 wsClient.send({ lat: currentLocation[1], lng: currentLocation[0], type: 'OBSTRUCTION', mission_id: activeMissionId });
@@ -78,24 +115,6 @@ export default function DriverHud() {
             </svg>
             <span className="text-[9px] font-bold tracking-wider text-white">BLOCK</span>
           </button>
-        </div>
-
-        {/* Telemetry Bar */}
-        <div className="bg-[#141414] border-t border-[#2a2a2a] p-5 z-20 flex items-center shadow-[0_-10px_20px_rgba(0,0,0,0.3)]">
-          <div className="flex flex-col flex-1 pl-2">
-            <p className="text-[#8b8b8b] text-[10px] font-semibold tracking-widest mb-1 uppercase">ETA</p>
-            <p className="text-[17px] font-bold text-[#f5f5f5]">{eta}</p>
-          </div>
-          <div className="w-px h-10 bg-[#2a2a2a]" />
-          <div className="flex flex-col flex-1 pl-5">
-            <p className="text-[#8b8b8b] text-[10px] font-semibold tracking-widest mb-1 uppercase">Distance</p>
-            <p className="text-[17px] font-bold text-[#f5f5f5]">{distanceLeft}</p>
-          </div>
-          <div className="w-px h-10 bg-[#2a2a2a]" />
-          <div className="flex flex-col flex-1 pl-5">
-            <p className="text-[#8b8b8b] text-[10px] font-semibold tracking-widest mb-1 uppercase">Speed</p>
-            <p className="text-[17px] font-bold text-[#f5f5f5]">{speed} MPH</p>
-          </div>
         </div>
 
       </div>
