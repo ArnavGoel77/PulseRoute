@@ -160,7 +160,6 @@ export function useGPSSimulator(driverId = null) {
       if (paused !== undefined) setDemoPaused(paused);
     });
 
-<<<<<<< HEAD
     const unsubReset = wsClient.on('RESET_SIMULATION', () => {
       setMissionActive(false);
       setActiveMissionId(null);
@@ -174,8 +173,6 @@ export function useGPSSimulator(driverId = null) {
       setSpeed(0);
     });
 
-    return () => { unsubMission(); unsubPhase(); unsubRoute(); unsubDemoSpeed(); unsubReset(); };
-=======
     // On state recovery, the backend sends a TELEMETRY_UPDATE with the last known
     // position right after the MISSION_START replay. Store it so the MISSION_START
     // handler (which may fire next) can seek to the correct route index.
@@ -186,8 +183,7 @@ export function useGPSSimulator(driverId = null) {
       }
     });
 
-    return () => { unsubMission(); unsubPhase(); unsubRoute(); unsubDemoSpeed(); unsubRecovery(); };
->>>>>>> 49c30853e9b228b355720316f7a9f816f0c25b79
+    return () => { unsubMission(); unsubPhase(); unsubRoute(); unsubDemoSpeed(); unsubReset(); unsubRecovery(); };
   }, []);
 
   // Main GPS tick loop
