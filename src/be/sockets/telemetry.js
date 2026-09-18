@@ -1,6 +1,12 @@
 const { updateTelemetry } = require('../services/redis-client');
 const { processTelemetryUpdate } = require('../services/eta-calculator');
 
+// --- Dev 3 Placeholder Dependencies ---
+// Dev 2 depends on these to extract intersection nodes and handle hazard rerouting.
+const anomalyDetector = require('../services/anomaly-detector');
+const osrmHelper = require('../routes/osrm');
+// --------------------------------------
+
 const tmcClients = new Set();
 const hudClients = new Set();
 
@@ -40,9 +46,8 @@ function initTelemetry(wss) {
         activeMissions[mission_id] = {
           path_polyline,
           priority,
-          // In a full implementation, Dev 3 would supply these nodes. 
-          // For testing, Dev 4's dummy nodes can be inserted here via another endpoint, 
-          // or we can populate a dummy one if empty.
+          // Placeholder call to Dev 3's OSRM proxy helper to decode the polyline and return intersection nodes
+          // upcomingNodes: osrmHelper.extractNodesFromPolyline(path_polyline)
           upcomingNodes: [
              // Example dummy node: { id: "node-1", coord: [-122.4194, 37.7749], preempted: false, passed: false }
           ]
@@ -79,8 +84,12 @@ function initTelemetry(wss) {
       // 3. INCIDENT_LOGGED: { "lat": number, "lng": number, "type": "OBSTRUCTION" }
       if (parsed.type === 'OBSTRUCTION') {
         broadcast(tmcClients, parsed);
-        // Dev 3's anomaly detector would theoretically listen to this, 
-        // but for now, we just bounce it to TMC for visualization.
+        
+        // Placeholder call to Dev 3's anomaly detector to trigger dynamic rerouting
+        // if (anomalyDetector && anomalyDetector.handleIncident) {
+        //   anomalyDetector.handleIncident(parsed.lat, parsed.lng, parsed.type);
+        // }
+        
         return;
       }
 
