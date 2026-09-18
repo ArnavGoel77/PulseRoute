@@ -33,6 +33,52 @@ async function fetchIncidents() {
     if (response.data && response.data.incidents) {
       latest_incidents = response.data.incidents;
       console.log(`[TomTom Service] Fetched ${latest_incidents.length} traffic incidents.`);
+      
+      // Wire up predictive anomaly detection
+      if (latest_incidents.length > 0) {
+        try {
+          const { redis } = require('../services/redis-client');
+          const anomalyDetector = require('../services/anomaly-detector');
+          
+          const routeKeys = await redis.keys('osrm_route:*');
+          let overlapFound = false;
+          
+          for (const rKey of routeKeys) {
+            const routeData = await redis.get(rKey);
+            // routeData might be a string if stored as raw JSON by some implementations, parsing it just in case
+            let decoded = null;
+            if (typeof routeData === 'string') {
+              try { decoded = JSON.parse(routeData).decoded_path; } catch(e){}
+            } else if (routeData && routeData.decoded_path) {
+              decoded = routeData.decoded_path;
+            }
+
+            if (decoded) {
+              const anomalies = anomalyDetector.detectAnomalies(decoded, latest_incidents);
+              if (anomalies.length > 0) {
+                overlapFound = true;
+                break;
+              }
+            }
+          }
+          
+          if (overlapFound) {
+            console.log(`[TomTom Service] Predictive Anomaly Detected on a known route! Triggering global recalculation...`);
+            const missionKeys = await redis.keys('mission:*:location');
+            for (const mKey of missionKeys) {
+              const mission_id = mKey.split(':')[1];
+              // Fire the OBSTRUCTION event to our anomaly-detector to force a reroute
+              anomalyDetector.incidentEmitter.emit('OBSTRUCTION', {
+                type: 'OBSTRUCTION',
+                mission_id: mission_id
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('[TomTom Service] Predictive analysis failed:', e.message);
+        }
+      }
+      
     } else {
       latest_incidents = [];
     }
