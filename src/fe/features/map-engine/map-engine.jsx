@@ -207,20 +207,58 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] }
       });
+
+      // Glow halo behind each node (always visible, low opacity)
+      map.addLayer({
+        id: 'intersections-glow', type: 'circle', source: 'intersections',
+        paint: { 'circle-radius': 14, 'circle-color': '#c92a2a', 'circle-opacity': 0.18, 'circle-blur': 1 }
+      });
+      // Red state
       map.addLayer({
         id: 'intersections-red', type: 'circle', source: 'intersections',
         filter: makeIdFilter([]),
-        paint: { 'circle-radius': 5, 'circle-color': '#c92a2a', 'circle-stroke-width': 1, 'circle-stroke-color': '#ff6b6b', 'circle-opacity': 0.9 }
+        paint: {
+          'circle-radius': 8,
+          'circle-color': '#c92a2a',
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#ff6b6b',
+          'circle-opacity': 0.95
+        }
       });
+      // Green state
       map.addLayer({
         id: 'intersections-green', type: 'circle', source: 'intersections',
         filter: makeIdFilter([]),
-        paint: { 'circle-radius': 6, 'circle-color': '#2b8a3e', 'circle-stroke-width': 1.5, 'circle-stroke-color': '#51cf66', 'circle-opacity': 1 }
+        paint: {
+          'circle-radius': 10,
+          'circle-color': '#2b8a3e',
+          'circle-stroke-width': 2.5,
+          'circle-stroke-color': '#51cf66',
+          'circle-opacity': 1
+        }
       });
+      // Orange flashing state
       map.addLayer({
         id: 'intersections-orange', type: 'circle', source: 'intersections',
         filter: makeIdFilter([]),
-        paint: { 'circle-radius': 6, 'circle-color': '#f08c00', 'circle-stroke-width': 1.5, 'circle-stroke-color': '#ffd43b', 'circle-opacity': 1 }
+        paint: {
+          'circle-radius': 10,
+          'circle-color': '#f08c00',
+          'circle-stroke-width': 2.5,
+          'circle-stroke-color': '#ffd43b',
+          'circle-opacity': 1
+        }
+      });
+      // Traffic light emoji label on every node
+      map.addLayer({
+        id: 'intersections-icon', type: 'symbol', source: 'intersections',
+        layout: {
+          'text-field': '🚦',
+          'text-size': 16,
+          'text-offset': [0, -1.8],
+          'text-allow-overlap': true,
+          'text-ignore-placement': true
+        }
       });
 
       // ── Roadblocks layer — added LAST so it's always on top ────────────────
@@ -472,13 +510,15 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
 }
 
 function _generateNodes(map, signalStateRef, coords, missionId) {
-  if (!map || !map.loaded() || coords.length < 3) return;
+  // Need at least 2 points to generate meaningful nodes
+  if (!map || !map.loaded() || coords.length < 2) return;
 
   // Use mission-scoped IDs so multiple missions don't overwrite each other's nodes
   const prefix = missionId ? `m${missionId.replace(/[^a-zA-Z0-9]/g, '')}-node` : 'node';
   const newFeatures = [];
   const addedState = {};
-  const step = Math.max(1, Math.floor(coords.length / 6));
+  // Use 10 nodes per route (was 6) for better coverage of intersections
+  const step = Math.max(1, Math.floor(coords.length / 10));
   let nodeIdx = 1;
   for (let i = step; i < coords.length - 1; i += step) {
     const id = `${prefix}-${nodeIdx++}`;
