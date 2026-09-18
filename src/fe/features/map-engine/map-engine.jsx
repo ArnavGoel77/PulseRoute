@@ -65,7 +65,7 @@ function decodePolyline(encoded) {
 /** Linear interpolation helper for D4-5 smooth movement. */
 const lerp = (a, b, t) => a + (b - a) * t;
 
-export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) {
+export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, recenterTrigger }) {
   const containerRef    = useRef(null);
   const mapRef          = useRef(null);
   const animFrameRef    = useRef(null);
@@ -87,6 +87,18 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
   const roadblockActiveRef  = useRef(isRoadblockModeActive);
   useEffect(() => { roadblockActiveRef.current = isRoadblockModeActive; }, [isRoadblockModeActive]);
 
+  // Recenter trigger
+  useEffect(() => {
+    if (recenterTrigger && mapRef.current) {
+      // Find current center from ambulance layer or just use ambulance position
+      const source = mapRef.current.getSource('ambulance');
+      if (source && source._data && source._data.geometry) {
+        const coords = source._data.geometry.coordinates;
+        mapRef.current.flyTo({ center: coords, zoom: 16, speed: 1.5 });
+      }
+    }
+  }, [recenterTrigger]);
+
   // ── Map Initialization ──────────────────────────────────────────────────────
   useEffect(() => {
     // signalStateRef is initialized empty; populated on MISSION_START
@@ -106,23 +118,7 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
 
     let pendingMission = null;
 
-    const handleMissionStart = (path_polyline) => {
-      if (!path_polyline || !mapRef.current) return;
-      if (!mapRef.current.isStyleLoaded()) {
-        pendingMission = path_polyline;
-        return;
-      }
-      
-      const coords = decodePolyline(path_polyline);
-      mapRef.current.getSource('route')?.setData({
-        type: 'Feature',
-        geometry: { type: 'LineString', coordinates: coords }
-      });
-      
-      if (coords.length > 0) {
-        mapRef.current.flyTo({ center: coords[0], zoom: 13, speed: 1.2 });
-      }
-
+    const generateNodes = (coords) => {
       const features = [];
       const newSignalState = {};
       const step = Math.max(1, Math.floor(coords.length / 6));
@@ -143,6 +139,26 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
         features
       });
       _applySignalFilters(mapRef.current, signalStateRef.current);
+    };
+
+    const handleMissionStart = (path_polyline) => {
+      if (!path_polyline || !mapRef.current) return;
+      if (!mapRef.current.isStyleLoaded()) {
+        pendingMission = path_polyline;
+        return;
+      }
+      
+      const coords = decodePolyline(path_polyline);
+      mapRef.current.getSource('route')?.setData({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: coords }
+      });
+      
+      if (coords.length > 0) {
+        mapRef.current.flyTo({ center: coords[0], zoom: 13, speed: 1.2 });
+      }
+
+      generateNodes(coords);
     };
 
     map.on('load', () => {
@@ -348,12 +364,13 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
         type: 'Feature',
         geometry: { type: 'LineString', coordinates: coords }
       });
+      // State Recovery / Detour fix: Ensure nodes are generated on refresh/detour
+      generateNodes(coords);
     });
 
     // INCIDENT_LOGGED → draw roadblock marker
     const unsubIncident = wsClient.on('INCIDENT_LOGGED', ({ lat, lng }) => {
       const map = mapRef.current;
-      
       const newFeature = {
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [lng, lat] }
@@ -363,6 +380,10 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
       
       if (map && map.loaded()) {
         map.getSource('roadblocks')?.setData(roadblocksDataRef.current);
+        // Fix z-index by ensuring roadblock layer is drawn last
+        if (map.getLayer('roadblocks-layer')) {
+          map.moveLayer('roadblocks-layer');
+        }
       }
     });
 

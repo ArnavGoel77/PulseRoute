@@ -102,8 +102,8 @@ export function useGPSSimulator() {
       setCurrentLocation(nextLoc);
       setRouteIndex(nextIndex);
       
-      const simSpeedMph = Math.floor(Math.random() * 10) + 30; // 30-40 mph
-      setSpeed(simSpeedMph);
+      const simSpeedKph = Math.floor(Math.random() * 15) + 50; // 50-65 km/h
+      setSpeed(simSpeedKph);
       
       // 1. Calculate dynamic telemetry (distance & ETA)
       const remainingRoute = route.slice(nextIndex);
@@ -111,13 +111,11 @@ export function useGPSSimulator() {
         try {
           const line = turf.lineString(remainingRoute);
           const distKm = turf.length(line, { units: 'kilometers' });
-          const distMi = distKm * 0.621371;
-          setDistanceLeft(`${distMi.toFixed(1)} mi`);
+          setDistanceLeft(`${distKm.toFixed(1)} km`);
           
           // ETA: (dist in km) / (speed in km/h) -> hours
-          const speedKmh = simSpeedMph * 1.60934;
-          if (speedKmh > 0) {
-            const hours = distKm / speedKmh;
+          if (simSpeedKph > 0) {
+            const hours = distKm / simSpeedKph;
             const mins = Math.floor(hours * 60);
             const secs = Math.floor((hours * 3600) % 60);
             setEta(`${mins}m ${secs}s`);
@@ -138,7 +136,7 @@ export function useGPSSimulator() {
             // Normalize between -180 and 180
             const normalizedDiff = (bearingDiff + 540) % 360 - 180; 
             
-            if (Math.abs(normalizedDiff) > 35) { // Threshold for a turn
+            if (Math.abs(normalizedDiff) > 20) { // Calibrated threshold for standard intersections (20 deg)
               turnIdx = i;
               setTurnInstruction(normalizedDiff > 0 ? 'Turn right' : 'Turn left');
               foundTurn = true;
@@ -150,14 +148,14 @@ export function useGPSSimulator() {
           if (foundTurn && turnIdx > 0) {
             const routeToTurn = remainingRoute.slice(0, turnIdx + 1);
             if (routeToTurn.length > 1) {
-              const turnLine = turf.lineString(routeToTurn);
-              const turnDistKm = turf.length(turnLine, { units: 'kilometers' });
-              const turnDistFt = Math.floor(turnDistKm * 3280.84);
-              if (turnDistFt < 100) {
-                setTurnDistance('now');
-              } else {
-                setTurnDistance(`in ${turnDistFt} ft`);
-              }
+               const turnLine = turf.lineString(routeToTurn);
+               const turnDistKm = turf.length(turnLine, { units: 'kilometers' });
+               const turnDistMeters = Math.floor(turnDistKm * 1000);
+               if (turnDistMeters < 30) {
+                 setTurnDistance('now');
+               } else {
+                 setTurnDistance(`in ${turnDistMeters} m`);
+               }
             }
           } else {
             setTurnInstruction('Follow Route');
@@ -168,7 +166,7 @@ export function useGPSSimulator() {
         }
 
       } else {
-        setDistanceLeft('0.0 mi');
+        setDistanceLeft('0.0 km');
         setEta('Arrived');
       }
       
@@ -176,7 +174,7 @@ export function useGPSSimulator() {
         mission_id: activeMissionId, 
         lat: nextLoc[1], 
         lng: nextLoc[0], 
-        speed: simSpeedMph 
+        speed: simSpeedKph 
       });
     }, intervalTime); 
 
