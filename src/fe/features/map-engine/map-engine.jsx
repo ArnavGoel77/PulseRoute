@@ -121,10 +121,10 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
         }
       });
 
-      // Load custom ambulance SVG
-      map.loadImage('/ambulance.svg', (error, image) => {
-        if (error) throw error;
-        if (!map.hasImage('ambulance-icon')) map.addImage('ambulance-icon', image);
+      // Load custom ambulance SVG via synchronous Image object to avoid network/path issues
+      const ambulanceImg = new Image(64, 64);
+      ambulanceImg.onload = () => {
+        if (!map.hasImage('ambulance-icon')) map.addImage('ambulance-icon', ambulanceImg);
         
         // Core ambulance icon
         map.addLayer({
@@ -137,7 +137,8 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
             'icon-allow-overlap': true
           }
         });
-      });
+      };
+      ambulanceImg.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4NCiAgPCEtLSBWZWhpY2xlIEJvZHkgLS0+DQogIDxyZWN0IHg9IjgiIHk9IjI0IiB3aWR0aD0iNDgiIGhlaWdodD0iMjQiIHJ4PSI0IiBmaWxsPSIjZmZmZmZmIi8+DQogIDxyZWN0IHg9IjQyIiB5PSIzMiIgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2IiByeD0iMiIgZmlsbD0iI2UwZTBlMCIvPg0KICA8IS0tIFdpbmRvd3MgLS0+DQogIDxyZWN0IHg9IjQ0IiB5PSIyNiIgd2lkdGg9IjEwIiBoZWlnaHQ9IjgiIHJ4PSIxIiBmaWxsPSIjNGFkZTgwIi8+DQogIDwhLS0gQ3Jvc3MgLS0+DQogIDxyZWN0IHg9IjIyIiB5PSIyOCIgd2lkdGg9IjQiIGhlaWdodD0iMTYiIHJ4PSIxIiBmaWxsPSIjZWY0NDQ0Ii8+DQogIDxyZWN0IHg9IjE2IiB5PSIzNCIgd2lkdGg9IjE2IiBoZWlnaHQ9IjQiIHJ4PSIxIiBmaWxsPSIjZWY0NDQ0Ii8+DQogIDwhLS0gV2hlZWxzIC0tPg0KICA8Y2lyY2xlIGN4PSIxOCIgY3k9IjQ4IiByPSI2IiBmaWxsPSIjMWYyOTM3Ii8+DQogIDxjaXJjbGUgY3g9IjQ2IiBjeT0iNDgiIHI9IjYiIGZpbGw9IiMxZjI5MzciLz4NCiAgPGNpcmNsZSBjeD0iMTgiIGN5PSI0OCIgcj0iMyIgZmlsbD0iIzljYTNhZiIvPg0KICA8Y2lyY2xlIGN4PSI0NiIgY3k9IjQ4IiByPSIzIiBmaWxsPSIjOWNhM2FmIi8+DQogIDwhLS0gTGlnaHRiYXIgLS0+DQogIDxyZWN0IHg9IjE2IiB5PSIyMCIgd2lkdGg9IjgiIGhlaWdodD0iNCIgcng9IjIiIGZpbGw9IiNlZjQ0NDQiLz4NCiAgPHJlY3QgeD0iMjYiIHk9IjIwIiB3aWR0aD0iOCIgaGVpZ2h0PSI0IiByeD0iMiIgZmlsbD0iIzNiODJmNiIvPg0KPC9zdmc+DQo=';
 
       // ── Active route line source + layer ────────────────────────────────────
       map.addSource('route', {
