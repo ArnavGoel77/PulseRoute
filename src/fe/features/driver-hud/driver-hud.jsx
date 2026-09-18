@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGPSSimulator } from './use-gps-simulator';
+import wsClient from '../../services/websocket-client';
 
 export default function DriverHud() {
+  useEffect(() => { wsClient.connect(); }, []);
   const { currentLocation, speed, eta, distanceLeft } = useGPSSimulator();
   
   // State to simulate the preemption banner (GREEN or ALL_RED)
@@ -58,7 +60,10 @@ export default function DriverHud() {
           {/* FAB / Roadblock Warning */}
           <button 
             className="absolute bottom-6 right-6 w-16 h-16 bg-red-600 hover:bg-red-500 transition-colors rounded-full flex flex-col items-center justify-center shadow-2xl border-2 border-red-400 z-30"
-            onClick={() => alert("INCIDENT_LOGGED payload emitted!")}
+            onClick={() => {
+              wsClient.send({ lat: currentLocation[0], lng: currentLocation[1], type: 'OBSTRUCTION' });
+              alert('Obstruction logged! Check TMC.');
+            }}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
