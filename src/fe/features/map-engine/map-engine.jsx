@@ -36,11 +36,11 @@ const AMBULANCE_GEOJSON = {
   geometry: { type: 'Point', coordinates: MUMBAI_CENTER }
 };
 
-// D4-6: Mapbox expression filter helper — avoids full layer re-render
+// D4-6: Mapbox expression filter helper — legacy syntax guaranteed to work
 const makeIdFilter = (ids) =>
   ids.length > 0
-    ? ['in', ['get', 'intersection_id'], ['literal', ids]]
-    : ['==', ['get', 'intersection_id'], '__NONE__']; // matches nothing
+    ? ['in', 'intersection_id', ...ids]
+    : ['==', 'intersection_id', '__NONE__']; // matches nothing
 
 /**
  * Precision-5 polyline decoder (matches OSRM / Google Maps encoding).
@@ -121,17 +121,22 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
         }
       });
 
-      // Core ambulance dot
-      map.addLayer({
-        id: 'ambulance-core',
-        type: 'circle',
-        source: 'ambulance',
-        paint: {
-          'circle-radius': 7,
-          'circle-color': '#10b981',
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff'
-        }
+      // Load custom ambulance SVG
+      map.loadImage('/ambulance.svg', (error, image) => {
+        if (error) throw error;
+        if (!map.hasImage('ambulance-icon')) map.addImage('ambulance-icon', image);
+        
+        // Core ambulance icon
+        map.addLayer({
+          id: 'ambulance-core',
+          type: 'symbol',
+          source: 'ambulance',
+          layout: {
+            'icon-image': 'ambulance-icon',
+            'icon-size': 0.7,
+            'icon-allow-overlap': true
+          }
+        });
       });
 
       // ── Active route line source + layer ────────────────────────────────────
@@ -291,11 +296,13 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced }) 
         mapRef.current.flyTo({ center: coords[0], zoom: 13, speed: 1.2 });
       }
 
-      // Generate nodes dynamically along the route (every 15 coords)
+      // Generate nodes dynamically along the route (guarantee ~5 nodes)
       const features = [];
       const newSignalState = {};
-      for (let i = 5; i < coords.length - 2; i += 15) {
-        const id = `node-${i}`;
+      const step = Math.max(1, Math.floor(coords.length / 6));
+      let nodeId = 1;
+      for (let i = step; i < coords.length - 1; i += step) {
+        const id = `node-${nodeId++}`;
         features.push({
           type: 'Feature',
           properties: { intersection_id: id, signal_phase: 'RED' },

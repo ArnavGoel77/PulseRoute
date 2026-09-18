@@ -23,7 +23,7 @@ export default function App() {
 
       {/* ── Top Navigation Bar ── */}
       <nav className="shrink-0 h-10 bg-[#0b0b0b] border-b border-[#2a2a2a] flex items-center px-4 gap-1 z-50">
-        <span className="text-[#444] text-xs font-mono mr-3 tracking-widest">HORIZONGRID /</span>
+        <span className="text-[#444] text-xs font-mono mr-3 tracking-widest">PULSEROUTE /</span>
         {[
           { id: VIEWS.DISPATCHER, label: 'DISPATCH CAD' },
           { id: VIEWS.TMC,        label: 'TMC DASHBOARD' },

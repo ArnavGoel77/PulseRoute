@@ -17,6 +17,8 @@ export default function TmcCommandDashboard() {
   ]);
   const [activeMissions, setActiveMissions] = useState([]);
   const [clock, setClock] = useState('');
+  const [demoSpeed, setDemoSpeed] = useState(1);
+  const [demoPaused, setDemoPaused] = useState(false);
 
   // ── Live UTC Clock ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -97,6 +99,17 @@ export default function TmcCommandDashboard() {
 
   const handleRoadblockPlaced = () => {
     setRoadblockModeActive(false);
+  };
+
+  const handleSpeedChange = (speed) => {
+    setDemoSpeed(speed);
+    wsClient.send({ speedMult: speed, paused: demoPaused });
+  };
+
+  const handlePauseToggle = () => {
+    const nextPaused = !demoPaused;
+    setDemoPaused(nextPaused);
+    wsClient.send({ speedMult: demoSpeed, paused: nextPaused });
   };
 
   return (
@@ -216,6 +229,31 @@ export default function TmcCommandDashboard() {
               {roadblockModeActive ? '[ × ]' : '[ + ]'}
             </p>
           </button>
+          
+          <div className="flex gap-[10px] w-full mt-[5px]">
+             <button
+                onClick={handlePauseToggle}
+                className={`transition-colors border border-solid flex h-[44px] items-center justify-center px-[14px] shadow-[0px_4px_8px_0px_rgba(0,0,0,0.35)] w-1/3 cursor-pointer ${demoPaused ? 'bg-orange-600 border-orange-500' : 'bg-[#272727] hover:bg-[#333] border-[#2a2a2a]'}`}
+             >
+                <p className="font-semibold leading-[14px] text-[11px] tracking-[1.32px] text-[#f5f5f5]">
+                   {demoPaused ? 'RESUME' : 'PAUSE'}
+                </p>
+             </button>
+             
+             <button
+                onClick={() => handleSpeedChange(1)}
+                className={`transition-colors border border-solid flex h-[44px] items-center justify-center px-[14px] shadow-[0px_4px_8px_0px_rgba(0,0,0,0.35)] w-1/3 cursor-pointer ${demoSpeed === 1 && !demoPaused ? 'bg-emerald-600 border-emerald-500' : 'bg-[#272727] hover:bg-[#333] border-[#2a2a2a]'}`}
+             >
+                <p className="font-semibold leading-[14px] text-[11px] tracking-[1.32px] text-[#f5f5f5]">1x SPEED</p>
+             </button>
+
+             <button
+                onClick={() => handleSpeedChange(3)}
+                className={`transition-colors border border-solid flex h-[44px] items-center justify-center px-[14px] shadow-[0px_4px_8px_0px_rgba(0,0,0,0.35)] w-1/3 cursor-pointer ${demoSpeed === 3 && !demoPaused ? 'bg-emerald-600 border-emerald-500' : 'bg-[#272727] hover:bg-[#333] border-[#2a2a2a]'}`}
+             >
+                <p className="font-semibold leading-[14px] text-[11px] tracking-[1.32px] text-[#f5f5f5]">3x SPEED</p>
+             </button>
+          </div>
         </div>
 
         <div className="flex-grow" />

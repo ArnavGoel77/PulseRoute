@@ -5,10 +5,24 @@ import MapEngine from '../map-engine/map-engine';
 
 export default function DriverHud() {
   useEffect(() => { wsClient.connect(); }, []);
-  const { currentLocation, speed, eta, distanceLeft } = useGPSSimulator();
+  const { currentLocation, speed, eta, distanceLeft, activeMissionId, turnInstruction, turnDistance } = useGPSSimulator();
   
   // State to simulate the preemption banner (GREEN or ALL_RED)
-  const [signalStatus, setSignalStatus] = useState('GREEN');
+  const [signalStatus, setSignalStatus] = useState(null);
+
+  useEffect(() => {
+    const unsubPreempt = wsClient.on('SIGNAL_PREEMPT', () => {
+      setSignalStatus('GREEN');
+    });
+    const unsubRelease = wsClient.on('SIGNAL_RELEASE', () => {
+      setSignalStatus(null); // Hide banner
+    });
+
+    return () => {
+      unsubPreempt();
+      unsubRelease();
+    };
+  }, []);
 
   return (
     <div className="bg-slate-900 text-white min-h-screen w-full flex justify-center">
@@ -16,14 +30,14 @@ export default function DriverHud() {
         
         {/* Top Instruction Panel */}
         <div className="bg-[#141414] border-b border-[#2a2a2a] p-6 z-20 flex flex-col shadow-md">
-          <p className="text-[#8b8b8b] text-[10px] font-semibold tracking-[0.15em] mb-6 uppercase">HorizonGrid Navigate</p>
+          <p className="text-[#8b8b8b] text-[10px] font-semibold tracking-[0.15em] mb-6 uppercase">PulseRoute Navigate</p>
           <div className="flex items-center space-x-4">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-white" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8-8-8z" />
             </svg>
             <div className="flex flex-col">
-              <h1 className="text-[28px] leading-tight font-bold text-[#f5f5f5]">Turn right</h1>
-              <p className="text-[15px] text-[#8b8b8b] mt-1">in 500 ft · on West 4th St</p>
+              <h1 className="text-[28px] leading-tight font-bold text-[#f5f5f5]">{turnInstruction}</h1>
+              {turnDistance !== '--' && <p className="text-[15px] text-[#8b8b8b] mt-1">{turnDistance}</p>}
             </div>
           </div>
         </div>
@@ -38,7 +52,7 @@ export default function DriverHud() {
               <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_4px_#22c55e]"></div>
             </div>
             <p className="font-semibold text-sm tracking-wide text-white uppercase">
-              PREEMPTED: GREEN IN 12s
+              PREEMPTED: {signalStatus} IN 12s
             </p>
           </div>
         )}
@@ -51,8 +65,12 @@ export default function DriverHud() {
           <button 
             className="absolute bottom-6 right-6 w-16 h-16 bg-red-600 hover:bg-red-500 transition-colors rounded-full flex flex-col items-center justify-center shadow-2xl border-2 border-red-400 z-30"
             onClick={() => {
-              wsClient.send({ lat: currentLocation[0], lng: currentLocation[1], type: 'OBSTRUCTION' });
-              alert('Obstruction logged! Check TMC.');
+              if (activeMissionId) {
+                wsClient.send({ lat: currentLocation[1], lng: currentLocation[0], type: 'OBSTRUCTION', mission_id: activeMissionId });
+                alert('Obstruction logged! Check TMC.');
+              } else {
+                alert('No active mission to log obstruction for!');
+              }
             }}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -66,17 +84,17 @@ export default function DriverHud() {
         <div className="bg-[#141414] border-t border-[#2a2a2a] p-5 z-20 flex items-center shadow-[0_-10px_20px_rgba(0,0,0,0.3)]">
           <div className="flex flex-col flex-1 pl-2">
             <p className="text-[#8b8b8b] text-[10px] font-semibold tracking-widest mb-1 uppercase">ETA</p>
-            <p className="text-[17px] font-bold text-[#f5f5f5]">4m 20s</p>
+            <p className="text-[17px] font-bold text-[#f5f5f5]">{eta}</p>
           </div>
           <div className="w-px h-10 bg-[#2a2a2a]" />
           <div className="flex flex-col flex-1 pl-5">
             <p className="text-[#8b8b8b] text-[10px] font-semibold tracking-widest mb-1 uppercase">Distance</p>
-            <p className="text-[17px] font-bold text-[#f5f5f5]">2.1 mi</p>
+            <p className="text-[17px] font-bold text-[#f5f5f5]">{distanceLeft}</p>
           </div>
           <div className="w-px h-10 bg-[#2a2a2a]" />
           <div className="flex flex-col flex-1 pl-5">
             <p className="text-[#8b8b8b] text-[10px] font-semibold tracking-widest mb-1 uppercase">Speed</p>
-            <p className="text-[17px] font-bold text-[#f5f5f5]">45 MPH</p>
+            <p className="text-[17px] font-bold text-[#f5f5f5]">{speed} MPH</p>
           </div>
         </div>
 
