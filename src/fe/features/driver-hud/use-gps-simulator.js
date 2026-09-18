@@ -42,6 +42,7 @@ export function useGPSSimulator(driverId = null) {
   const currentPhaseRef     = useRef('to_incident');
   const currentLocationRef  = useRef(null);
   const driverIdRef         = useRef(driverId);
+  const recoveredPosRef     = useRef(null); // last known Redis position on state recovery
 
   const [currentLocation, setCurrentLocation] = useState(null);
   const [speed, setSpeed]                     = useState(0);
@@ -108,8 +109,22 @@ export function useGPSSimulator(driverId = null) {
 
       const phase = current_phase || 'to_incident';
       const leg = legsRef.current[phase];
+
+      // If we have a recovered telemetry position, find the nearest point on
+      // the route and start from there instead of index 0 (prevents HUD restart)
+      let startIndex = 0;
+      if (recoveredPosRef.current && leg.length > 1) {
+        const [recLng, recLat] = recoveredPosRef.current;
+        let minDist = Infinity;
+        leg.forEach(([lng, lat], idx) => {
+          const d = Math.abs(lng - recLng) + Math.abs(lat - recLat);
+          if (d < minDist) { minDist = d; startIndex = idx; }
+        });
+      }
+      recoveredPosRef.current = null; // consumed
+
       setRoute(leg);
-      setRouteIndex(0);
+      setRouteIndex(startIndex);
       setCurrentPhase(phase);
       currentPhaseRef.current = phase;
       setMissionActive(true);
@@ -145,6 +160,7 @@ export function useGPSSimulator(driverId = null) {
       if (paused !== undefined) setDemoPaused(paused);
     });
 
+<<<<<<< HEAD
     const unsubReset = wsClient.on('RESET_SIMULATION', () => {
       setMissionActive(false);
       setActiveMissionId(null);
@@ -159,6 +175,19 @@ export function useGPSSimulator(driverId = null) {
     });
 
     return () => { unsubMission(); unsubPhase(); unsubRoute(); unsubDemoSpeed(); unsubReset(); };
+=======
+    // On state recovery, the backend sends a TELEMETRY_UPDATE with the last known
+    // position right after the MISSION_START replay. Store it so the MISSION_START
+    // handler (which may fire next) can seek to the correct route index.
+    const unsubRecovery = wsClient.on('TELEMETRY_UPDATE', ({ mission_id, lat, lng }) => {
+      // Only capture if we don't have an active mission yet (i.e. we're recovering)
+      if (!missionIdRef.current || missionIdRef.current === mission_id) {
+        recoveredPosRef.current = [lng, lat];
+      }
+    });
+
+    return () => { unsubMission(); unsubPhase(); unsubRoute(); unsubDemoSpeed(); unsubRecovery(); };
+>>>>>>> 49c30853e9b228b355720316f7a9f816f0c25b79
   }, []);
 
   // Main GPS tick loop

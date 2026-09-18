@@ -56,6 +56,12 @@ const activeMissions = {};
  */
 const registeredDrivers = {};
 
+/**
+ * activeRoadblocks stores all obstruction positions for replay to new clients.
+ * Format: [{ lat, lng, type: 'OBSTRUCTION' }]
+ */
+const activeRoadblocks = [];
+
 function broadcast(payload) {
   const message = JSON.stringify(payload);
   for (const client of allClients) {
@@ -154,8 +160,37 @@ function initTelemetry(wss) {
 
       // ── INCIDENT_LOGGED: { lat, lng, type: 'OBSTRUCTION', mission_id }
       if (parsed.type === 'OBSTRUCTION') {
-        broadcast(parsed);
-        if (incidentEmitter) incidentEmitter.emit('OBSTRUCTION', parsed);
+        // Store the roadblock so new/reconnecting clients see it
+        activeRoadblocks.push({ lat: parsed.lat, lng: parsed.lng, type: 'OBSTRUCTION' });
+
+        // If no mission_id supplied (e.g. TMC map click), find the closest active mission
+        // by comparing to each mission's last known telemetry position in Redis.
+        let resolvedMissionId = parsed.mission_id;
+        if (!resolvedMissionId) {
+          const missionIds = Object.keys(activeMissions);
+          if (missionIds.length === 1) {
+            // Only one active mission — trivial assignment
+            resolvedMissionId = missionIds[0];
+          } else if (missionIds.length > 1) {
+            // Multiple missions: find the one with telemetry closest to the roadblock
+            let minDist = Infinity;
+            for (const mid of missionIds) {
+              try {
+                const t = await getTelemetry(mid);
+                if (t && t.lat && t.lng) {
+                  const dLat = parseFloat(t.lat) - parsed.lat;
+                  const dLng = parseFloat(t.lng) - parsed.lng;
+                  const dist = Math.sqrt(dLat * dLat + dLng * dLng);
+                  if (dist < minDist) { minDist = dist; resolvedMissionId = mid; }
+                }
+              } catch (_) { /* skip */ }
+            }
+          }
+        }
+
+        const enriched = { ...parsed, mission_id: resolvedMissionId };
+        broadcast(enriched);
+        if (incidentEmitter) incidentEmitter.emit('OBSTRUCTION', enriched);
         return;
       }
 
@@ -210,6 +245,10 @@ function initTelemetry(wss) {
         for (const driver of Object.values(registeredDrivers)) {
           sendToClient(ws, driver);
         }
+        // Replay all roadblocks
+        for (const rb of activeRoadblocks) {
+          sendToClient(ws, rb);
+        }
         return;
       }
       // ── RESET_SIMULATION: clear all missions
@@ -255,6 +294,10 @@ function initTelemetry(wss) {
       // Replay registered drivers
       for (const driver of Object.values(registeredDrivers)) {
         sendToClient(ws, driver);
+      }
+      // Replay all roadblocks
+      for (const rb of activeRoadblocks) {
+        sendToClient(ws, rb);
       }
     })();
   });
