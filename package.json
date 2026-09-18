@@ -1,0 +1,44 @@
+{
+  "name": "pulseroute",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node src/be/server.js",
+    "dev": "concurrently \"npm run start\" \"vite\"",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ArnavGoel77/PulseRoute.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/ArnavGoel77/PulseRoute/issues"
+  },
+  "homepage": "https://github.com/ArnavGoel77/PulseRoute#readme",
+  "dependencies": {
+    "@turf/turf": "7.4.0",
+    "@upstash/redis": "1.38.4",
+    "axios": "1.20.0",
+    "dotenv": "18.0.0",
+    "express": "5.2.1",
+    "lucide-react": "1.47.0",
+    "mapbox-gl": "3.31.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "ws": "8.21.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "6.1.1",
+    "autoprefixer": "10.6.1",
+    "concurrently": "10.0.5",
+    "postcss": "8.5.28",
+    "tailwindcss": "4.3.3",
+    "vite": "8.3.0"
+  }
+}
