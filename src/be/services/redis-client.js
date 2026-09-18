@@ -49,6 +49,7 @@ async function getTelemetry(missionId) {
 }
 
 module.exports = {
+  redis,
   updateTelemetry,
   getTelemetry
 };
