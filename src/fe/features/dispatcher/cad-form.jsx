@@ -56,8 +56,12 @@ export default function CadForm() {
     const [start_lat, start_lng] = origin.split(',').map(s => s.trim());
     const [end_lat, end_lng] = destination.split(',').map(s => s.trim());
 
+    // Mock ambulance base (e.g., Colaba Fire Station) for 4-point route
+    const base_lat = 18.9100;
+    const base_lng = 72.8100;
+
     // Hit the backend OSRM proxy
-    fetch(`/api/route?start_lat=${start_lat}&start_lng=${start_lng}&end_lat=${end_lat}&end_lng=${end_lng}`)
+    fetch(`/api/route?start_lat=${start_lat}&start_lng=${start_lng}&end_lat=${end_lat}&end_lng=${end_lng}&base_lat=${base_lat}&base_lng=${base_lng}`)
       .then(res => res.json())
       .then(data => {
         if (data.error) {

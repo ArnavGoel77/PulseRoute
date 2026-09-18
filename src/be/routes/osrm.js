@@ -48,7 +48,7 @@ function decodePolyline(encoded) {
  */
 router.get('/', async (req, res) => {
   try {
-    const { start_lat, start_lng, end_lat, end_lng, detour_lat, detour_lng } = req.query;
+    const { start_lat, start_lng, end_lat, end_lng, detour_lat, detour_lng, base_lat, base_lng } = req.query;
 
     if (!start_lat || !start_lng || !end_lat || !end_lng) {
       return res.status(400).json({ error: 'missing_coordinates' });
@@ -56,6 +56,9 @@ router.get('/', async (req, res) => {
 
     // Strict snake_case namespace for Redis key
     let cache_key = `osrm_route:${start_lat},${start_lng}:${end_lat},${end_lng}`;
+    if (base_lat && base_lng) {
+      cache_key += `:base_${base_lat},${base_lng}`;
+    }
     if (detour_lat && detour_lng) {
       cache_key += `:${detour_lat},${detour_lng}`;
     }
@@ -80,11 +83,23 @@ router.get('/', async (req, res) => {
 
     // 2. Fetch from OSRM Public API
     // Note: OSRM expects coordinates in {longitude},{latitude} order
-    let coords_str = `${start_lng},${start_lat}`;
-    if (detour_lat && detour_lng) {
-      coords_str += `;${detour_lng},${detour_lat}`;
+    let coords_str = '';
+    
+    if (base_lat && base_lng) {
+      coords_str += `${base_lng},${base_lat};`; // Start at Base
     }
-    coords_str += `;${end_lng},${end_lat}`;
+    
+    coords_str += `${start_lng},${start_lat}`; // Incident (Origin)
+
+    if (detour_lat && detour_lng) {
+      coords_str += `;${detour_lng},${detour_lat}`; // Detour (if any)
+    }
+    
+    coords_str += `;${end_lng},${end_lat}`; // Hospital (Destination)
+    
+    if (base_lat && base_lng) {
+      coords_str += `;${base_lng},${base_lat}`; // Return to Base
+    }
     
     const osrm_url = `http://router.project-osrm.org/route/v1/driving/${coords_str}?overview=full&geometries=polyline`;
     
@@ -102,7 +117,8 @@ router.get('/', async (req, res) => {
       path_polyline: primary_route.geometry,
       decoded_path: decodePolyline(primary_route.geometry),
       distance_meters: primary_route.distance,
-      duration_seconds: primary_route.duration
+      duration_seconds: primary_route.duration,
+      route_legs: primary_route.legs // Provide phase lengths to Dev 1
     };
 
     // 4. Save to Redis Cache (Expire after 30 seconds)
