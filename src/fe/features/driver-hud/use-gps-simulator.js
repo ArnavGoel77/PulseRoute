@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import wsClient from '../../services/websocket-client';
+import * as turf from '@turf/turf';
 
 // A mock polyline to traverse (Mumbai)
 const MOCK_POLYLINE = [
@@ -28,26 +29,40 @@ export function useGPSSimulator() {
   const [route, setRoute] = useState(MOCK_POLYLINE);
   const [currentLocation, setCurrentLocation] = useState(MOCK_POLYLINE[0]);
   const [speed, setSpeed] = useState(0);
-  const [eta, setEta] = useState('4m 20s');
-  const [distanceLeft, setDistanceLeft] = useState('2.1 mi');
+  const [eta, setEta] = useState('--');
+  const [distanceLeft, setDistanceLeft] = useState('--');
   const [missionActive, setMissionActive] = useState(false);
+  const [routeIndex, setRouteIndex] = useState(0);
+  const [activeMissionId, setActiveMissionId] = useState(null);
+  
+  const [turnInstruction, setTurnInstruction] = useState('Follow Route');
+  const [turnDistance, setTurnDistance] = useState('--');
 
   // Listen for route updates
   useEffect(() => {
-    const unsubMission = wsClient.on('MISSION_START', ({ path_polyline }) => {
+    const unsubMission = wsClient.on('MISSION_START', ({ path_polyline, mission_id }) => {
+      // Lock onto the first mission received. Ignore other missions.
+      if (activeMissionId && activeMissionId !== mission_id) return;
+      
       if (path_polyline) {
         const coords = decodePolyline(path_polyline);
-        setRoute(coords);
-        setCurrentLocation(coords[0]);
+        if (mission_id) setActiveMissionId(mission_id);
+        
+        // Anti-teleport: Prepend current location so we drive there smoothly
+        setRoute([currentLocation, ...coords]);
+        setRouteIndex(0);
         setMissionActive(true);
       }
     });
 
-    const unsubRoute = wsClient.on('ROUTE_UPDATED', ({ new_polyline }) => {
+    const unsubRoute = wsClient.on('ROUTE_UPDATED', ({ new_polyline, mission_id }) => {
+      if (activeMissionId && activeMissionId !== mission_id) return;
+
       if (new_polyline) {
         const coords = decodePolyline(new_polyline);
-        setRoute(coords);
-        setCurrentLocation(coords[0]);
+        // Anti-teleport: Prepend current location
+        setRoute([currentLocation, ...coords]);
+        setRouteIndex(0);
       }
     });
 
@@ -55,35 +70,113 @@ export function useGPSSimulator() {
       unsubMission();
       unsubRoute();
     };
-  }, []);
+  }, [currentLocation, activeMissionId]); // Depend on state so closure has latest values
   
   useEffect(() => {
-    if (!missionActive) return;
+    if (!missionActive || !activeMissionId) return;
 
-    let index = 0;
     const interval = setInterval(() => {
-      if (route.length === 0) return;
-      index = (index + 1) % route.length;
-      setCurrentLocation(route[index]);
+      if (route.length === 0 || routeIndex >= route.length - 1) {
+        setSpeed(0);
+        setTurnInstruction('Arrived');
+        setTurnDistance('0 ft');
+        return; // Reached end of route
+      }
       
-      const simSpeed = Math.floor(Math.random() * 20) + 30; // 30-50 mph
-      setSpeed(simSpeed);
+      const nextIndex = routeIndex + 1;
+      const nextLoc = route[nextIndex];
+      
+      setCurrentLocation(nextLoc);
+      setRouteIndex(nextIndex);
+      
+      const simSpeedMph = Math.floor(Math.random() * 10) + 30; // 30-40 mph
+      setSpeed(simSpeedMph);
+      
+      // 1. Calculate dynamic telemetry (distance & ETA)
+      const remainingRoute = route.slice(nextIndex);
+      if (remainingRoute.length > 1) {
+        try {
+          const line = turf.lineString(remainingRoute);
+          const distKm = turf.length(line, { units: 'kilometers' });
+          const distMi = distKm * 0.621371;
+          setDistanceLeft(`${distMi.toFixed(1)} mi`);
+          
+          // ETA: (dist in km) / (speed in km/h) -> hours
+          const speedKmh = simSpeedMph * 1.60934;
+          if (speedKmh > 0) {
+            const hours = distKm / speedKmh;
+            const mins = Math.floor(hours * 60);
+            const secs = Math.floor((hours * 3600) % 60);
+            setEta(`${mins}m ${secs}s`);
+          }
+        } catch (e) {
+           console.error("Turf distance calculation error", e);
+        }
+        
+        // 2. Calculate next turn instruction using bearing
+        try {
+          let foundTurn = false;
+          let turnIdx = -1;
+          let currentBearing = turf.bearing(turf.point(remainingRoute[0]), turf.point(remainingRoute[1]));
+          
+          for (let i = 1; i < remainingRoute.length - 1; i++) {
+            const nextBearing = turf.bearing(turf.point(remainingRoute[i]), turf.point(remainingRoute[i+1]));
+            const bearingDiff = nextBearing - currentBearing;
+            // Normalize between -180 and 180
+            const normalizedDiff = (bearingDiff + 540) % 360 - 180; 
+            
+            if (Math.abs(normalizedDiff) > 35) { // Threshold for a turn
+              turnIdx = i;
+              setTurnInstruction(normalizedDiff > 0 ? 'Turn right' : 'Turn left');
+              foundTurn = true;
+              break;
+            }
+            currentBearing = nextBearing;
+          }
+          
+          if (foundTurn && turnIdx > 0) {
+            const routeToTurn = remainingRoute.slice(0, turnIdx + 1);
+            if (routeToTurn.length > 1) {
+              const turnLine = turf.lineString(routeToTurn);
+              const turnDistKm = turf.length(turnLine, { units: 'kilometers' });
+              const turnDistFt = Math.floor(turnDistKm * 3280.84);
+              if (turnDistFt < 100) {
+                setTurnDistance('now');
+              } else {
+                setTurnDistance(`in ${turnDistFt} ft`);
+              }
+            }
+          } else {
+            setTurnInstruction('Follow Route');
+            setTurnDistance('--');
+          }
+        } catch (e) {
+          console.error("Turf bearing calculation error", e);
+        }
+
+      } else {
+        setDistanceLeft('0.0 mi');
+        setEta('Arrived');
+      }
       
       wsClient.send({ 
-        mission_id: 'M-042', 
-        lat: route[index][1], 
-        lng: route[index][0], 
-        speed: simSpeed 
+        mission_id: activeMissionId, 
+        lat: nextLoc[1], 
+        lng: nextLoc[0], 
+        speed: simSpeedMph 
       });
     }, 1000); // 1Hz updates as per spec
 
     return () => clearInterval(interval);
-  }, [route, missionActive]);
+  }, [route, routeIndex, missionActive, activeMissionId]);
 
   return {
     currentLocation,
     speed,
     eta,
-    distanceLeft
+    distanceLeft,
+    activeMissionId,
+    turnInstruction,
+    turnDistance
   };
 }
