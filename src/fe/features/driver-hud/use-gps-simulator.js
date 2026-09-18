@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import wsClient from '../../services/websocket-client';
 import * as turf from '@turf/turf';
 
@@ -32,6 +32,8 @@ export function useGPSSimulator() {
   const [eta, setEta] = useState('--');
   const [distanceLeft, setDistanceLeft] = useState('--');
   const [missionActive, setMissionActive] = useState(false);
+  const [demoSpeed, setDemoSpeed] = useState(1);
+  const [demoPaused, setDemoPaused] = useState(false);
   const [routeIndex, setRouteIndex] = useState(0);
   const [activeMissionId, setActiveMissionId] = useState('M-042');
 
@@ -57,14 +59,22 @@ export function useGPSSimulator() {
       }
     });
 
+    const unsubDemoSpeed = wsClient.on('DEMO_SPEED_CONTROL', ({ speedMult, paused }) => {
+      if (speedMult !== undefined) setDemoSpeed(speedMult);
+      if (paused !== undefined) setDemoPaused(paused);
+    });
+
     return () => {
       unsubMission();
       unsubRoute();
+      unsubDemoSpeed();
     };
   }, [currentLocation]); // Depend on currentLocation for accurate closure state
   
   useEffect(() => {
-    if (!missionActive) return;
+    if (!missionActive || demoPaused) return;
+
+    const intervalTime = 1000 / demoSpeed;
 
     const interval = setInterval(() => {
       if (route.length === 0 || routeIndex >= route.length - 1) {
@@ -111,10 +121,10 @@ export function useGPSSimulator() {
         lng: nextLoc[0], 
         speed: simSpeedMph 
       });
-    }, 1000); // 1Hz updates as per spec
+    }, intervalTime); // 1Hz scaled by demoSpeed
 
     return () => clearInterval(interval);
-  }, [route, routeIndex, missionActive, activeMissionId]);
+  }, [route, routeIndex, missionActive, activeMissionId, demoSpeed, demoPaused]);
 
   return {
     currentLocation,
