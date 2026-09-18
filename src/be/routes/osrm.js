@@ -5,7 +5,7 @@
 
 const express = require('express');
 const axios = require('axios');
-const redis = require('../services/redis-client');
+const { redis } = require('../services/redis-client');
 
 const router = express.Router();
 
