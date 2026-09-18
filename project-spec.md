@@ -41,7 +41,7 @@
 | **BD2-4** | `src/be/services/anomaly-detector.js` | Use Turf.js (`booleanIntersects`) to check if any returned TomTom incident polygons overlap with the decoded OSRM route polyline array. |
 | **BD2-5** | `src/be/services/anomaly-detector.js` | Build the dynamic rerouting engine. If an intersection is detected (or the manual `INCIDENT_LOGGED` WS event fires), query OSRM with waypoint blocks to bypass the hazard and broadcast `ROUTE_UPDATED`. |
 
-### Dev 4 (You): Lead Integrator (Figma, DevOps & TMC Frontend)
+### Dev 4: Lead Integrator (Figma, DevOps & TMC Frontend)
 
 | Task ID | Component/Target | Detailed Execution Steps |
 | :--- | :--- | :--- |
