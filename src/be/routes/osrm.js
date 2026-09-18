@@ -48,14 +48,17 @@ function decodePolyline(encoded) {
  */
 router.get('/', async (req, res) => {
   try {
-    const { start_lat, start_lng, end_lat, end_lng } = req.query;
+    const { start_lat, start_lng, end_lat, end_lng, detour_lat, detour_lng } = req.query;
 
     if (!start_lat || !start_lng || !end_lat || !end_lng) {
       return res.status(400).json({ error: 'missing_coordinates' });
     }
 
     // Strict snake_case namespace for Redis key
-    const cache_key = `osrm_route:${start_lat},${start_lng}:${end_lat},${end_lng}`;
+    let cache_key = `osrm_route:${start_lat},${start_lng}:${end_lat},${end_lng}`;
+    if (detour_lat && detour_lng) {
+      cache_key += `:${detour_lat},${detour_lng}`;
+    }
 
     // 1. Check Redis Cache
     let cached_route = null;
@@ -77,7 +80,13 @@ router.get('/', async (req, res) => {
 
     // 2. Fetch from OSRM Public API
     // Note: OSRM expects coordinates in {longitude},{latitude} order
-    const osrm_url = `http://router.project-osrm.org/route/v1/driving/${start_lng},${start_lat};${end_lng},${end_lat}?overview=full&geometries=polyline`;
+    let coords_str = `${start_lng},${start_lat}`;
+    if (detour_lat && detour_lng) {
+      coords_str += `;${detour_lng},${detour_lat}`;
+    }
+    coords_str += `;${end_lng},${end_lat}`;
+    
+    const osrm_url = `http://router.project-osrm.org/route/v1/driving/${coords_str}?overview=full&geometries=polyline`;
     
     const osrm_response = await axios.get(osrm_url);
     const osrm_data = osrm_response.data;
