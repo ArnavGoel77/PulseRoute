@@ -46,6 +46,7 @@ export function useGPSSimulator(driverId = null) {
   const recoveredPosRef     = useRef(null); // last known Redis position on state recovery
   const phaseTransitionPendingRef = useRef(false); // prevents duplicate phase-end transitions
   const baseCoordsRef         = useRef(null); // original location to teleport back to
+  const routeMetaRef          = useRef({ speeds: {} }); // dynamically stores routing engine's exact avg speed for each leg
 
   const [currentLocation, setCurrentLocation] = useState(null);
   const [speed, setSpeed]                     = useState(0);
@@ -114,6 +115,19 @@ export function useGPSSimulator(driverId = null) {
         to_base:     decodePolyline(leg_to_base)
       };
 
+      // Calculate the exact physical average speed (km/h) for each leg as reported by the routing engine
+      const speeds = {};
+      if (payload.distances && payload.durations) {
+        ['to_incident', 'to_hospital', 'to_base'].forEach(p => {
+          const d = payload.distances[p];
+          const t = payload.durations[p];
+          if (d > 0 && t > 0) {
+            speeds[p] = (d / t) * 3.6; // m/s to km/h
+          }
+        });
+      }
+      routeMetaRef.current.speeds = speeds;
+
       missionIdRef.current = mission_id;
       setActiveMissionId(mission_id);
 
@@ -156,13 +170,18 @@ export function useGPSSimulator(driverId = null) {
       }
     });
 
-    const unsubRoute = wsClient.on('ROUTE_UPDATED', ({ new_polyline, mission_id }) => {
+    const unsubRoute = wsClient.on('ROUTE_UPDATED', ({ new_polyline, mission_id, distance, duration }) => {
       if (mission_id !== missionIdRef.current) return;
       const coords = decodePolyline(new_polyline);
       legsRef.current[currentPhaseRef.current] = coords;
       const startCoord = currentLocationRef.current || coords[0];
       setRoute([startCoord, ...coords]);
       setRouteIndex(0);
+      
+      // Dynamically update the average speed for this newly rerouted leg
+      if (distance > 0 && duration > 0) {
+        routeMetaRef.current.speeds[currentPhaseRef.current] = (distance / duration) * 3.6;
+      }
     });
 
     const unsubDemoSpeed = wsClient.on('DEMO_SPEED_CONTROL', ({ speedMult, paused }) => {
@@ -286,11 +305,23 @@ export function useGPSSimulator(driverId = null) {
             const line = turf.lineString(remainingRoute);
             const distKm = turf.length(line, { units: 'kilometers' });
             setDistanceLeft(`${distKm.toFixed(1)} km`);
-            if (simSpeedKph > 0) {
-              const hours = distKm / simSpeedKph;
-              const mins = Math.floor(hours * 60);
-              const secs = Math.floor((hours * 3600) % 60);
+            
+            // ETA Stabilization logic:
+            // Instead of hardcoding 55km/h, we dynamically fetch the EXACT average speed 
+            // the routing engine (OSRM/Mapbox) expected for this specific physical route based on traffic and road types.
+            const ASSUMED_AVG_SPEED = routeMetaRef.current.speeds[currentPhaseRef.current] || 55;
+            const hours = distKm / ASSUMED_AVG_SPEED;
+            const totalSeconds = Math.floor(hours * 3600);
+            const mins = Math.floor(totalSeconds / 60);
+            const secs = totalSeconds % 60;
+            
+            // Google Maps styling: suppress seconds on long trips so it only ticks down every full minute
+            if (mins > 2) {
+              setEta(`${mins} min`);
+            } else if (mins > 0) {
               setEta(`${mins}m ${secs}s`);
+            } else {
+              setEta(`${secs}s`);
             }
           } catch (e) { /* skip */ }
 

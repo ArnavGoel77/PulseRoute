@@ -214,7 +214,7 @@ function initTelemetry(wss) {
           else if (phase === 'to_base') destination = mission.base_coords;
         }
 
-        const enriched = { ...parsed, id: roadblockId, mission_id: resolvedMissionId, destination };
+        const enriched = { ...parsed, id: roadblockId, mission_id: resolvedMissionId, destination, activeRoadblocks };
         broadcast(enriched);
         if (incidentEmitter) incidentEmitter.emit('OBSTRUCTION', enriched);
         return;

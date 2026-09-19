@@ -34,12 +34,30 @@ incidentEmitter.on('OBSTRUCTION', async (payload) => {
       destination = { lat: 19.0760, lng: 72.8777 }; 
     }
     
-    // Fire the Option A rerouting bypass!
-    await triggerReroute(payload.mission_id, current_location, destination);
+    // Fire the Option A rerouting bypass, passing the roadblock payload!
+    await triggerReroute(payload.mission_id, current_location, destination, payload);
   } else {
     console.warn(`[Anomaly Detector] Failed to find telemetry in Redis for mission ${payload.mission_id}. Cannot reroute.`);
   }
 });
+
+/**
+ * Polyline Decoder (Precision 5)
+ */
+function decodePolyline(encoded) {
+  const coords = [];
+  let index = 0, lat = 0, lng = 0;
+  while (index < encoded.length) {
+    let shift = 0, result = 0, b;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lat += (result & 1) ? ~(result >> 1) : result >> 1;
+    shift = 0; result = 0;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lng += (result & 1) ? ~(result >> 1) : result >> 1;
+    coords.push([lat / 1e5, lng / 1e5]); 
+  }
+  return coords;
+}
 
 /**
  * Detects if the given route polyline intersects with any TomTom incidents.
@@ -108,59 +126,62 @@ function detectAnomalies(routeCoords, incidents) {
 }
 
 /**
- * BD2-5: Dynamic Rerouting Engine (Option A Implementation)
- * Calculates a detour waypoint to bypass hazards and queries OSRM for a new route.
- * Emits a ROUTE_UPDATED event that the WebSocket server should listen to.
+ * BD2-5: Dynamic Rerouting Engine (Option B Robust Implementation)
+ * Requests alternative routes from OSRM and verifies them against the hazard polygon.
  * 
  * @param {string} mission_id - The active mission ID.
  * @param {Object} current_location - { lat, lng } of the ambulance.
  * @param {Object} destination_coords - { lat, lng } of the hospital.
+ * @param {Object} obstruction - Optional { lat, lng } of the roadblock.
  */
-async function triggerReroute(mission_id, current_location, destination_coords) {
-  console.log(`[Rerouting Engine] Initiating Option A reroute for mission ${mission_id}...`);
+async function triggerReroute(mission_id, current_location, destination_coords, obstruction) {
+  console.log(`[Rerouting Engine] Initiating native Mapbox reroute for mission ${mission_id}...`);
 
   try {
-    // 1. Calculate a detour waypoint using Turf.js
-    // We create a point 500 meters perpendicular to the direct path to force OSRM away from the hazard
-    const current_pt = turf.point([current_location.lng, current_location.lat]);
-    const dest_pt = turf.point([destination_coords.lng, destination_coords.lat]);
-    
-    const direct_bearing = turf.bearing(current_pt, dest_pt);
-    // Add 90 degrees to steer right (or left) of the incident
-    const detour_bearing = direct_bearing + 90; 
-    
-    // Create a waypoint 0.5km away
-    const detour_pt = turf.destination(current_pt, 0.5, detour_bearing, { units: 'kilometers' });
-    const detour_lng = detour_pt.geometry.coordinates[0];
-    const detour_lat = detour_pt.geometry.coordinates[1];
+    const mapboxToken = process.env.VITE_MAPBOX_TOKEN;
+    if (!mapboxToken) {
+      console.error('[Rerouting Engine] Missing VITE_MAPBOX_TOKEN. Cannot use Mapbox API.');
+      return null;
+    }
 
-    console.log(`[Rerouting Engine] Calculated detour waypoint: ${detour_lat}, ${detour_lng}`);
-
-    // 2. Query OSRM with 3 points: Current -> Detour Waypoint -> Destination
-    const osrm_url = `http://router.project-osrm.org/route/v1/driving/${current_location.lng},${current_location.lat};${detour_lng},${detour_lat};${destination_coords.lng},${destination_coords.lat}?overview=full&geometries=polyline`;
+    const allObstructions = obstruction?.activeRoadblocks || (obstruction && obstruction.lat ? [obstruction] : []);
     
-    const response = await axios.get(osrm_url);
-    const osrm_data = response.data;
+    // Construct the exclude parameter for Mapbox API (e.g., exclude=point(lon1 lat1),point(lon2 lat2))
+    let excludeParam = '';
+    if (allObstructions.length > 0) {
+      // Mapbox requires space-separated lon lat inside point(), comma-separated between points
+      const points = allObstructions.map(obs => `point(${obs.lng} ${obs.lat})`);
+      excludeParam = `&exclude=${points.join(',')}`;
+      console.log(`[Rerouting Engine] Native Mapbox exclusions applied: ${points.length} roadblocks`);
+    }
 
-    if (osrm_data.code === 'Ok' && osrm_data.routes.length > 0) {
-      const new_polyline = osrm_data.routes[0].geometry;
+    // Call Mapbox Directions v5 API with the driving-traffic profile
+    // This is fundamentally superior to our old Turf.js OSRM fallback because it natively cuts these exact coordinates out of the routing graph.
+    const mapbox_url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${current_location.lng},${current_location.lat};${destination_coords.lng},${destination_coords.lat}?overview=full&geometries=polyline${excludeParam}&access_token=${mapboxToken}`;
+    
+    const response = await axios.get(mapbox_url);
+    const mapbox_data = response.data;
+    
+    if (mapbox_data.code === 'Ok' && mapbox_data.routes.length > 0) {
+      const best_route = mapbox_data.routes[0];
+      const best_polyline = best_route.geometry;
       
       const payload = {
         mission_id: mission_id,
-        new_polyline: new_polyline
+        new_polyline: best_polyline,
+        distance: best_route.distance,
+        duration: best_route.duration
       };
-
-      // 3. Broadcast the ROUTE_UPDATED payload via our EventEmitter
-      // Dev 1 (Telemetry) will listen to this and pipe it out to the raw WebSocket clients!
-      rerouteEmitter.emit('ROUTE_UPDATED', payload);
-      console.log(`[Rerouting Engine] Successfully generated and broadcasted new route for mission ${mission_id}!`);
       
+      // Broadcast the ROUTE_UPDATED payload
+      rerouteEmitter.emit('ROUTE_UPDATED', payload);
+      console.log(`[Rerouting Engine] Successfully generated and broadcasted new native route for mission ${mission_id}!`);
       return payload;
     } else {
-      console.error('[Rerouting Engine] OSRM failed to find a valid detour.');
+      console.error('[Rerouting Engine] Mapbox failed to find a valid detour.');
     }
   } catch (error) {
-    console.error('[Rerouting Engine] Error calculating reroute:', error.message);
+    console.error('[Rerouting Engine] Error calculating reroute:', error.response?.data?.message || error.message);
   }
 }
 
