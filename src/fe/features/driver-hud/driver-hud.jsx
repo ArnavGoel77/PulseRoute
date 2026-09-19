@@ -144,17 +144,7 @@ export default function DriverHud() {
           </div>
         </div>
 
-        {/* Signal preemption banner */}
-        {signalStatus && (
-          <div className="absolute top-[240px] left-1/2 -translate-x-1/2 w-[90%] py-3 px-4 rounded-lg flex items-center shadow-2xl z-30 bg-emerald-600 border border-emerald-400">
-            <div className="flex flex-col items-center justify-between w-4 h-9 bg-black rounded p-[2px] mr-4 border border-[#444]">
-              <div className="w-2 h-2 rounded-full bg-red-600 opacity-20" />
-              <div className="w-2 h-2 rounded-full bg-yellow-500 opacity-20" />
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_#10b981]" />
-            </div>
-            <p className="font-bold text-sm tracking-wide text-white uppercase">PREEMPTED: ALL SIGNALS GREEN</p>
-          </div>
-        )}
+
 
         {/* Driver Pill Switcher (bottom) */}
         <div className="absolute bottom-36 left-0 right-0 z-30 flex justify-center px-4">
