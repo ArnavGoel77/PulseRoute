@@ -101,6 +101,8 @@ export function useGPSSimulator(driverId = null) {
       if (driverIdRef.current && unit_id && unit_id !== driverIdRef.current) return;
       // If we already have a different active mission, skip
       if (missionIdRef.current && missionIdRef.current !== mission_id) return;
+      // If we are ALREADY actively running this exact mission, skip so we don't restart the leg!
+      if (missionIdRef.current === mission_id && missionActive) return;
 
       if (base_coords) {
         baseCoordsRef.current = [base_coords.lng, base_coords.lat];
@@ -184,8 +186,13 @@ export function useGPSSimulator(driverId = null) {
     // On state recovery, the backend sends a TELEMETRY_UPDATE with the last known
     // position right after the MISSION_START replay. Store it so the MISSION_START
     // handler (which may fire next) can seek to the correct route index.
-    const unsubRecovery = wsClient.on('TELEMETRY_UPDATE', ({ mission_id, lat, lng }) => {
-      // Only capture if we don't have an active mission yet (i.e. we're recovering)
+    const unsubRecovery = wsClient.on('TELEMETRY_UPDATE', (payload) => {
+      const { mission_id, unit_id, is_recovery, lat, lng } = payload;
+      // ONLY accept this as a recovery position if it is explicitly marked as a recovery update
+      // from a STATE_REQUEST, AND it matches this simulator's driver ID.
+      if (!is_recovery) return;
+      if (driverIdRef.current && unit_id && unit_id !== driverIdRef.current) return;
+      
       if (!missionIdRef.current || missionIdRef.current === mission_id) {
         recoveredPosRef.current = [lng, lat];
       }
@@ -319,7 +326,9 @@ export function useGPSSimulator(driverId = null) {
         }
 
         wsClient.send({
+          type: 'TELEMETRY_UPDATE',
           mission_id: missionIdRef.current,
+          unit_id: driverIdRef.current,
           lat: nextLoc[1],
           lng: nextLoc[0],
           speed: simSpeedKph

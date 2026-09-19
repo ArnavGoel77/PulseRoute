@@ -57,11 +57,11 @@ const makeIdFilter = (ids) =>
 
 function createDestinationPinEl(color = '#e03131', labelText = '') {
   const el = document.createElement('div');
-  el.style.cssText = `
-    position: relative;
-    cursor: pointer;
-    display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
-  `;
+  el.style.cursor = 'pointer';
+  el.style.display = 'flex';
+  el.style.flexDirection = 'column';
+  el.style.alignItems = 'center';
+  el.style.justifyContent = 'flex-end';
   el.innerHTML = `
     ${labelText ? `<div style="background: ${color}; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; margin-bottom: 2px; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.5);">${labelText}</div>` : ''}
     <svg viewBox="0 0 32 40" width="32" height="40" xmlns="http://www.w3.org/2000/svg">
@@ -131,11 +131,54 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
     }
   }, [recenterTrigger, watchMissionId]);
 
+  // Helper to remove a single mission's layers and state
+  const _removeMissionFromMap = (map, mId, isComplete = false) => {
+    ['amb-halo', 'amb-core', 'route-line'].forEach(prefix => {
+      const layerId = `${prefix}-${mId}`;
+      if (map.getLayer(layerId)) map.removeLayer(layerId);
+    });
+    [`ambulance-${mId}`, `route-${mId}`].forEach(srcId => {
+      if (map.getSource(srcId)) map.removeSource(srcId);
+    });
+    missionMarkersRef.current[`${mId}-incident`]?.remove();
+    missionMarkersRef.current[`${mId}-hospital`]?.remove();
+    delete animStateRef.current[mId];
+    delete nodesFeaturesRef.current[mId];
+    
+    // Only delete the color index if the mission actually finished!
+    // Otherwise we lose the color consistency when switching tabs in HUD.
+    if (isComplete) {
+      delete missionIndexRef.current[mId];
+    }
+    
+    // Refresh intersections to clear old nodes
+    const allFeatures = Object.values(nodesFeaturesRef.current).flat();
+    map.getSource('intersections')?.setData({ type: 'FeatureCollection', features: allFeatures });
+  };
+
+  const watchMissionIdRef = useRef(watchMissionId);
+  useEffect(() => { 
+    watchMissionIdRef.current = watchMissionId; 
+    // If a watchMissionId is set, clear all OTHER missions from the map
+    if (watchMissionId && mapRef.current && mapLoadedRef.current) {
+      Object.keys(animStateRef.current).forEach(mId => {
+        if (mId !== watchMissionId) {
+          _removeMissionFromMap(mapRef.current, mId);
+        }
+      });
+      // Force a state refresh so the map receives MISSION_START and draws the new active mission's route immediately.
+      wsClient.send({ request_state: true });
+    }
+  }, [watchMissionId]);
+
   // Helper: ensure per-mission sources/layers exist
   const ensureMissionLayers = (map, missionId) => {
     if (!map.getSource(`ambulance-${missionId}`)) {
-      const colorIdx = missionCountRef.current++;
-      missionIndexRef.current[missionId] = colorIdx;
+      let colorIdx = missionIndexRef.current[missionId];
+      if (colorIdx === undefined) {
+        colorIdx = missionCountRef.current++;
+        missionIndexRef.current[missionId] = colorIdx;
+      }
       const color = getMissionColor(colorIdx);
 
       map.addSource(`ambulance-${missionId}`, {
@@ -365,6 +408,7 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
 
     const unsubMission = wsClient.on('MISSION_START', (payload) => {
       const { mission_id, leg_to_incident, incident_coords, hospital_coords, current_phase } = payload;
+      if (watchMissionIdRef.current && mission_id !== watchMissionIdRef.current) return;
       if (!mapRef.current || !mapLoadedRef.current) return;
 
       missionPhaseRef.current[mission_id] = current_phase || 'to_incident';
@@ -401,29 +445,17 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
     });
 
     const unsubPhase = wsClient.on('PHASE_CHANGE', ({ mission_id, new_phase }) => {
+      if (watchMissionIdRef.current && mission_id !== watchMissionIdRef.current) return;
       if (!mapRef.current || !mapLoadedRef.current) return;
       missionPhaseRef.current[mission_id] = new_phase;
 
       if (new_phase === 'complete') {
-        const map = mapRef.current;
-        ['amb-halo', 'amb-core', 'route-line'].forEach(prefix => {
-          const layerId = `${prefix}-${mission_id}`;
-          if (map.getLayer(layerId)) map.removeLayer(layerId);
-        });
-        [`ambulance-${mission_id}`, `route-${mission_id}`].forEach(srcId => {
-          if (map.getSource(srcId)) map.removeSource(srcId);
-        });
-        missionMarkersRef.current[`${mission_id}-incident`]?.remove();
-        missionMarkersRef.current[`${mission_id}-hospital`]?.remove();
-        delete animStateRef.current[mission_id];
-        delete missionIndexRef.current[mission_id];
-        delete nodesFeaturesRef.current[mission_id];
-        const allFeatures = Object.values(nodesFeaturesRef.current).flat();
-        map.getSource('intersections')?.setData({ type: 'FeatureCollection', features: allFeatures });
+        _removeMissionFromMap(mapRef.current, mission_id, true);
       }
     });
 
     const unsubTelemetry = wsClient.on('TELEMETRY_UPDATE', ({ mission_id, lat, lng }) => {
+      if (watchMissionIdRef.current && mission_id !== watchMissionIdRef.current) return;
       const state = animStateRef.current[mission_id];
       if (state) {
         state.prev = state.target;
@@ -433,6 +465,7 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
     });
 
     const unsubRoute = wsClient.on('ROUTE_UPDATED', ({ mission_id, new_polyline }) => {
+      if (watchMissionIdRef.current && mission_id !== watchMissionIdRef.current) return;
       if (!mapRef.current || !mapLoadedRef.current || !new_polyline) return;
       const coords = decodePolyline(new_polyline);
       mapRef.current.getSource(`route-${mission_id}`)?.setData({
