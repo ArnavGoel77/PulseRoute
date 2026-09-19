@@ -361,8 +361,9 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
       const animate = () => {
         const now = Date.now();
         for (const [missionId, state] of Object.entries(animStateRef.current)) {
+          const interval = state.interval || 1000;
           const elapsed = now - state.lastTime;
-          const t = Math.min(elapsed / 1000, 1);
+          const t = Math.min(elapsed / interval, 1);
           const lng = lerp(state.prev[0], state.target[0], t);
           const lat = lerp(state.prev[1], state.target[1], t);
           if (map.getSource(`ambulance-${missionId}`)) {
@@ -458,9 +459,29 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
       if (watchMissionIdRef.current && mission_id !== watchMissionIdRef.current) return;
       const state = animStateRef.current[mission_id];
       if (state) {
-        state.prev = state.target;
+        const now = Date.now();
+        const elapsed = now - state.lastTime;
+        
+        // 1. Calculate EXACT current physical marker position so we never teleport/jump
+        if (state.interval) {
+          const t = Math.min(elapsed / state.interval, 1);
+          const currentLng = lerp(state.prev[0], state.target[0], t);
+          const currentLat = lerp(state.prev[1], state.target[1], t);
+          state.prev = [currentLng, currentLat];
+        } else {
+          state.prev = state.target;
+        }
+        
+        // 2. Dynamically estimate the interval time between updates (adapts to demoSpeed changes)
+        // Ignores massive gaps (e.g. initial load or paused simulation)
+        if (elapsed > 0 && elapsed < 5000) {
+          state.interval = state.interval ? (state.interval * 0.7 + elapsed * 0.3) : elapsed;
+        } else {
+          state.interval = 1000;
+        }
+
         state.target = [lng, lat];
-        state.lastTime = Date.now();
+        state.lastTime = now;
       }
     });
 

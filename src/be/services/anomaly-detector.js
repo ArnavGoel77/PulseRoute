@@ -125,17 +125,8 @@ function detectAnomalies(routeCoords, incidents) {
   return overlapping_incidents;
 }
 
-/**
- * BD2-5: Dynamic Rerouting Engine (Option B Robust Implementation)
- * Requests alternative routes from OSRM and verifies them against the hazard polygon.
- * 
- * @param {string} mission_id - The active mission ID.
- * @param {Object} current_location - { lat, lng } of the ambulance.
- * @param {Object} destination_coords - { lat, lng } of the hospital.
- * @param {Object} obstruction - Optional { lat, lng } of the roadblock.
- */
 async function triggerReroute(mission_id, current_location, destination_coords, obstruction) {
-  console.log(`[Rerouting Engine] Initiating native Mapbox reroute for mission ${mission_id}...`);
+  console.log(`[Rerouting Engine] Initiating Mapbox detour reroute for mission ${mission_id}...`);
 
   try {
     const mapboxToken = process.env.VITE_MAPBOX_TOKEN;
@@ -144,20 +135,35 @@ async function triggerReroute(mission_id, current_location, destination_coords, 
       return null;
     }
 
-    const allObstructions = obstruction?.activeRoadblocks || (obstruction && obstruction.lat ? [obstruction] : []);
+    // Mapbox Directions API does NOT natively support point exclusions (exclude=point).
+    // It silently ignores them, returning the exact same route. 
+    // Instead, we calculate a detour waypoint 500m perpendicular to the roadblock!
     
-    // Construct the exclude parameter for Mapbox API (e.g., exclude=point(lon1 lat1),point(lon2 lat2))
-    let excludeParam = '';
-    if (allObstructions.length > 0) {
-      // Mapbox requires space-separated lon lat inside point(), comma-separated between points
-      const points = allObstructions.map(obs => `point(${obs.lng} ${obs.lat})`);
-      excludeParam = `&exclude=${points.join(',')}`;
-      console.log(`[Rerouting Engine] Native Mapbox exclusions applied: ${points.length} roadblocks`);
+    let obstacle_coords = current_location;
+    if (obstruction && obstruction.lat) {
+       obstacle_coords = { lat: obstruction.lat, lng: obstruction.lng };
+    } else if (obstruction && obstruction.activeRoadblocks && obstruction.activeRoadblocks.length > 0) {
+       obstacle_coords = obstruction.activeRoadblocks[0];
     }
+    
+    const current_pt = turf.point([current_location.lng, current_location.lat]);
+    const dest_pt = turf.point([destination_coords.lng, destination_coords.lat]);
+    const obstacle_pt = turf.point([obstacle_coords.lng, obstacle_coords.lat]);
+    
+    // Base bearing on the path from current to destination
+    const direct_bearing = turf.bearing(current_pt, dest_pt);
+    
+    // Create a detour waypoint 500m perpendicular to the path, originating from the obstacle
+    // (We add 90 degrees to steer right)
+    const detour_bearing = direct_bearing + 90; 
+    const detour_pt = turf.destination(obstacle_pt, 0.5, detour_bearing, { units: 'kilometers' });
+    const detour_lng = detour_pt.geometry.coordinates[0];
+    const detour_lat = detour_pt.geometry.coordinates[1];
 
-    // Call Mapbox Directions v5 API with the driving-traffic profile
-    // This is fundamentally superior to our old Turf.js OSRM fallback because it natively cuts these exact coordinates out of the routing graph.
-    const mapbox_url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${current_location.lng},${current_location.lat};${destination_coords.lng},${destination_coords.lat}?overview=full&geometries=polyline${excludeParam}&access_token=${mapboxToken}`;
+    console.log(`[Rerouting Engine] Calculated Turf.js detour waypoint: ${detour_lat}, ${detour_lng}`);
+
+    // Call Mapbox Directions v5 API routing THROUGH the detour waypoint
+    const mapbox_url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${current_location.lng},${current_location.lat};${detour_lng},${detour_lat};${destination_coords.lng},${destination_coords.lat}?overview=full&geometries=polyline&access_token=${mapboxToken}`;
     
     const response = await axios.get(mapbox_url);
     const mapbox_data = response.data;
@@ -175,7 +181,7 @@ async function triggerReroute(mission_id, current_location, destination_coords, 
       
       // Broadcast the ROUTE_UPDATED payload
       rerouteEmitter.emit('ROUTE_UPDATED', payload);
-      console.log(`[Rerouting Engine] Successfully generated and broadcasted new native route for mission ${mission_id}!`);
+      console.log(`[Rerouting Engine] Successfully generated and broadcasted new Mapbox detour route for mission ${mission_id}!`);
       return payload;
     } else {
       console.error('[Rerouting Engine] Mapbox failed to find a valid detour.');
