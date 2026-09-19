@@ -104,6 +104,7 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
   const missionPhaseRef      = useRef({}); // mission_id -> current_phase
   const missionMarkersRef    = useRef({}); // mission_id -> mapboxgl.Marker (destination pin)
   const animStateRef         = useRef({}); // mission_id -> { prev, target, lastTime }
+  const nodesFeaturesRef     = useRef({}); // mission_id -> features array
 
   // Signal state
   const signalStateRef       = useRef({});
@@ -364,8 +365,7 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
         });
 
         // Generate intersection nodes from the current leg
-        _generateNodes(mapRef.current, signalStateRef, coords, mission_id);
-
+        _generateNodes(mapRef.current, signalStateRef, nodesFeaturesRef, coords, mission_id);
 
         // Fly to route start
         if (coords.length > 0) {
@@ -400,6 +400,9 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
         missionMarkersRef.current[`${mission_id}-hospital`]?.remove();
         delete animStateRef.current[mission_id];
         delete missionIndexRef.current[mission_id];
+        delete nodesFeaturesRef.current[mission_id];
+        const allFeatures = Object.values(nodesFeaturesRef.current).flat();
+        map.getSource('intersections')?.setData({ type: 'FeatureCollection', features: allFeatures });
       }
     });
 
@@ -418,7 +421,7 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
       mapRef.current.getSource(`route-${mission_id}`)?.setData({
         type: 'Feature', geometry: { type: 'LineString', coordinates: coords }
       });
-      _generateNodes(mapRef.current, signalStateRef, coords, mission_id);
+      _generateNodes(mapRef.current, signalStateRef, nodesFeaturesRef, coords, mission_id);
     });
 
     // DESTINATION_UPDATED is no longer needed since we show both pins from the start.
@@ -503,6 +506,7 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
       unsubIncident(); unsubPreempt(); unsubRelease(); unsubDriver();
       unsubStore();
       clearInterval(flashTimerRef.current);
+      nodesFeaturesRef.current = {};
       Object.values(orangeTimersRef.current).forEach(clearTimeout);
       Object.values(missionMarkersRef.current).forEach(m => m.remove());
       Object.values(driverMarkersRef.current).forEach(m => m.remove());
@@ -552,19 +556,18 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
   );
 }
 
-function _generateNodes(map, signalStateRef, coords, missionId) {
+function _generateNodes(map, signalStateRef, nodesFeaturesRef, coords, missionId) {
   // Need at least 2 points to generate meaningful nodes
-  if (!map || !map.loaded() || coords.length < 2) return;
+  if (!map || coords.length < 2) return;
 
-  // Use mission-scoped IDs so multiple missions don't overwrite each other's nodes
-  const prefix = missionId ? `m${missionId.replace(/[^a-zA-Z0-9]/g, '')}-node` : 'node';
+  const mId = missionId || 'unknown';
   const newFeatures = [];
   const addedState = {};
-  // Use 10 nodes per route (was 6) for better coverage of intersections
+  
   const step = Math.max(1, Math.floor(coords.length / 10));
   let nodeIdx = 1;
   for (let i = step; i < coords.length - 1; i += step) {
-    const id = `${prefix}-${nodeIdx++}`;
+    const id = `${mId}-node-${nodeIdx++}`;
     newFeatures.push({
       type: 'Feature',
       properties: { intersection_id: id, signal_phase: 'RED' },
@@ -573,21 +576,20 @@ function _generateNodes(map, signalStateRef, coords, missionId) {
     addedState[id] = 'RED';
   }
 
-  // Merge with existing signal state (accumulate, don't replace)
-  const existing = map.getSource('intersections')?._data?.features || [];
-  const existingMissionIds = new Set(newFeatures.map(f => f.properties.intersection_id));
-  const retained = existing.filter(f => !existingMissionIds.has(f.properties.intersection_id));
+  nodesFeaturesRef.current[mId] = newFeatures;
   signalStateRef.current = { ...signalStateRef.current, ...addedState };
+
+  const allFeatures = Object.values(nodesFeaturesRef.current).flat();
 
   map.getSource('intersections')?.setData({
     type: 'FeatureCollection',
-    features: [...retained, ...newFeatures]
+    features: allFeatures
   });
   _applySignalFilters(map, signalStateRef.current);
 }
 
 function _applySignalFilters(map, signalState) {
-  if (!map || !map.loaded()) return;
+  if (!map) return;
   const redIds = [], greenIds = [], orangeIds = [];
   Object.entries(signalState).forEach(([id, phase]) => {
     if (phase === 'RED') redIds.push(id);

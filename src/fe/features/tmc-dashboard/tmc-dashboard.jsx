@@ -71,14 +71,18 @@ export default function TmcCommandDashboard() {
     });
 
     const unsubPhase = wsClient.on('PHASE_CHANGE', ({ mission_id, new_phase }) => {
-      setActiveMissions(prev => prev.map(m =>
-        m.id === mission_id ? {
-          ...m,
-          phase: new_phase,
-          status: new_phase === 'to_base' ? 'RETURNING' : new_phase === 'to_hospital' ? 'TRANSPORTING' : 'EN ROUTE'
-        } : m
-      ));
-      const labels = { to_incident: 'EN ROUTE', to_hospital: 'TRANSPORTING PATIENT', to_base: 'RETURNING TO BASE' };
+      if (new_phase === 'complete') {
+        setActiveMissions(prev => prev.filter(m => m.id !== mission_id));
+      } else {
+        setActiveMissions(prev => prev.map(m =>
+          m.id === mission_id ? {
+            ...m,
+            phase: new_phase,
+            status: new_phase === 'to_base' ? 'RETURNING' : new_phase === 'to_hospital' ? 'TRANSPORTING' : 'EN ROUTE'
+          } : m
+        ));
+      }
+      const labels = { to_incident: 'EN ROUTE', to_hospital: 'TRANSPORTING PATIENT', to_base: 'RETURNING TO BASE', complete: 'MISSION COMPLETE' };
       addEvent(`MISSION ${mission_id} → ${labels[new_phase] || new_phase}`);
     });
 

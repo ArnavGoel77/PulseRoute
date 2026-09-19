@@ -151,11 +151,15 @@ export default function CadForm() {
     });
     // Listen for phase changes globally to update the dispatched missions log
     const unsubPhase = wsClient.on('PHASE_CHANGE', ({ mission_id, new_phase }) => {
-      setDispatchedMissions(prev => prev.map(m =>
-        m.id === mission_id
-          ? { ...m, phase: new_phase, status: new_phase === 'to_base' ? 'RETURNING' : 'EN ROUTE' }
-          : m
-      ));
+      if (new_phase === 'complete') {
+        setDispatchedMissions(prev => prev.filter(m => m.id !== mission_id));
+      } else {
+        setDispatchedMissions(prev => prev.map(m =>
+          m.id === mission_id
+            ? { ...m, phase: new_phase, status: new_phase === 'to_base' ? 'RETURNING' : 'EN ROUTE' }
+            : m
+        ));
+      }
     });
     return () => { unsubReset(); unsubPhase(); };
   }, []);

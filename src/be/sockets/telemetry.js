@@ -27,13 +27,13 @@ function decodePolyline(encoded) {
   return coords;
 }
 
-function extractNodesFromPolyline(polyline) {
+function extractNodesFromPolyline(polyline, mission_id = 'unknown') {
   const coords = decodePolyline(polyline);
   const nodes = [];
-  const step = Math.max(1, Math.floor(coords.length / 6));
+  const step = Math.max(1, Math.floor(coords.length / 10));
   let nodeId = 1;
   for (let i = step; i < coords.length - 1; i += step) {
-    nodes.push({ id: `node-${nodeId++}`, coord: coords[i], preempted: false, passed: false });
+    nodes.push({ id: `${mission_id}-node-${nodeId++}`, coord: coords[i], preempted: false, passed: false });
   }
   return nodes;
 }
@@ -79,7 +79,7 @@ function updateMissionPolyline({ mission_id, new_polyline }) {
   if (phase === 'to_incident') activeMissions[mission_id].leg_to_incident = new_polyline;
   else if (phase === 'to_hospital') activeMissions[mission_id].leg_to_hospital = new_polyline;
   else if (phase === 'to_base') activeMissions[mission_id].leg_to_base = new_polyline;
-  activeMissions[mission_id].upcomingNodes = extractNodesFromPolyline(new_polyline);
+  activeMissions[mission_id].upcomingNodes = extractNodesFromPolyline(new_polyline, mission_id);
 }
 
 function initTelemetry(wss) {
@@ -109,7 +109,7 @@ function initTelemetry(wss) {
           hospital_coords: m.hospital_coords,
           base_coords: m.base_coords,
           current_phase: 'to_incident',
-          upcomingNodes: extractNodesFromPolyline(m.leg_to_incident)
+          upcomingNodes: extractNodesFromPolyline(m.leg_to_incident, m.mission_id)
         };
         console.log(`[Telemetry] MISSION_START: ${m.mission_id} — unit: ${m.unit_id} — phase: to_incident`);
         broadcast(m);
@@ -155,11 +155,11 @@ function initTelemetry(wss) {
           if (new_phase === 'to_hospital') {
             new_polyline = activeMissions[mission_id].leg_to_hospital;
             dest_coords = activeMissions[mission_id].hospital_coords;
-            if (new_polyline) activeMissions[mission_id].upcomingNodes = extractNodesFromPolyline(new_polyline);
+            if (new_polyline) activeMissions[mission_id].upcomingNodes = extractNodesFromPolyline(new_polyline, mission_id);
           } else if (new_phase === 'to_base') {
             new_polyline = activeMissions[mission_id].leg_to_base;
             dest_coords = activeMissions[mission_id].base_coords;
-            if (new_polyline) activeMissions[mission_id].upcomingNodes = extractNodesFromPolyline(new_polyline);
+            if (new_polyline) activeMissions[mission_id].upcomingNodes = extractNodesFromPolyline(new_polyline, mission_id);
           }
           console.log(`[Telemetry] PHASE_CHANGE: ${mission_id} → ${new_phase}`);
           
@@ -218,7 +218,7 @@ function initTelemetry(wss) {
           if (phase === 'to_incident') activeMissions[mission_id].leg_to_incident = new_polyline;
           else if (phase === 'to_hospital') activeMissions[mission_id].leg_to_hospital = new_polyline;
           else if (phase === 'to_base') activeMissions[mission_id].leg_to_base = new_polyline;
-          activeMissions[mission_id].upcomingNodes = extractNodesFromPolyline(new_polyline);
+          activeMissions[mission_id].upcomingNodes = extractNodesFromPolyline(new_polyline, mission_id);
         }
         broadcast(parsed);
         return;
