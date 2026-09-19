@@ -45,10 +45,16 @@ export default function App() {
       </nav>
 
       {/* ── View Content ── */}
-      <div className="flex-1 overflow-hidden">
-        {view === VIEWS.DISPATCHER && <CadForm />}
-        {view === VIEWS.TMC        && <TmcCommandDashboard />}
-        {view === VIEWS.HUD        && <DriverHud />}
+      <div className="flex-1 overflow-hidden relative">
+        <div className={`absolute inset-0 transition-opacity duration-300 ${view === VIEWS.DISPATCHER ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'}`}>
+          <CadForm />
+        </div>
+        <div className={`absolute inset-0 transition-opacity duration-300 ${view === VIEWS.TMC ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'}`}>
+          <TmcCommandDashboard />
+        </div>
+        <div className={`absolute inset-0 transition-opacity duration-300 ${view === VIEWS.HUD ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'}`}>
+          <DriverHud />
+        </div>
       </div>
     </div>
   );

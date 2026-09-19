@@ -53,27 +53,19 @@ const makeIdFilter = (ids) =>
     ? ['in', 'intersection_id', ...ids]
     : ['==', 'intersection_id', '__NONE__'];
 
-// Creates the destination pin HTML element (Google Maps style)
-function createDestinationPinEl(color = '#e03131') {
+function createDestinationPinEl(color = '#e03131', labelText = '') {
   const el = document.createElement('div');
   el.style.cssText = `
-    width: 32px; height: 40px;
     position: relative;
     cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
   `;
   el.innerHTML = `
+    ${labelText ? `<div style="background: ${color}; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; margin-bottom: 2px; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.5);">${labelText}</div>` : ''}
     <svg viewBox="0 0 32 40" width="32" height="40" xmlns="http://www.w3.org/2000/svg">
       <path d="M16 0C9.37 0 4 5.37 4 12c0 9 12 28 12 28s12-19 12-28c0-6.63-5.37-12-12-12z" fill="${color}"/>
       <circle cx="16" cy="12" r="5" fill="white" opacity="0.9"/>
     </svg>
-    <div style="
-      position: absolute; bottom: -6px; left: 50%;
-      transform: translateX(-50%);
-      width: 12px; height: 4px;
-      background: rgba(0,0,0,0.3);
-      border-radius: 50%;
-      filter: blur(2px);
-    "></div>
   `;
   return el;
 }
@@ -381,16 +373,34 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
         }
       }
 
-      // Place destination pin at incident location
+      // Place static pins for both incident and hospital
+      const color = getMissionColor(missionIndexRef.current[mission_id] ?? 0);
       if (incident_coords) {
-        _upsertDestinationMarker(mission_id, [incident_coords.lng, incident_coords.lat], getMissionColor(missionIndexRef.current[mission_id] ?? 0));
+        _upsertLabeledMarker(mission_id, 'incident', [incident_coords.lng, incident_coords.lat], color, 'INCIDENT');
+      }
+      if (hospital_coords) {
+        _upsertLabeledMarker(mission_id, 'hospital', [hospital_coords.lng, hospital_coords.lat], color, 'HOSPITAL');
       }
     });
 
     const unsubPhase = wsClient.on('PHASE_CHANGE', ({ mission_id, new_phase }) => {
       if (!mapRef.current || !mapLoadedRef.current) return;
       missionPhaseRef.current[mission_id] = new_phase;
-      // Phase change doesn't need a full route redraw here — ROUTE_UPDATED handles that
+      
+      if (new_phase === 'complete') {
+        const map = mapRef.current;
+        ['amb-halo', 'amb-core', 'route-line'].forEach(prefix => {
+          const layerId = `${prefix}-${mission_id}`;
+          if (map.getLayer(layerId)) map.removeLayer(layerId);
+        });
+        [`ambulance-${mission_id}`, `route-${mission_id}`].forEach(srcId => {
+          if (map.getSource(srcId)) map.removeSource(srcId);
+        });
+        missionMarkersRef.current[`${mission_id}-incident`]?.remove();
+        missionMarkersRef.current[`${mission_id}-hospital`]?.remove();
+        delete animStateRef.current[mission_id];
+        delete missionIndexRef.current[mission_id];
+      }
     });
 
     const unsubTelemetry = wsClient.on('TELEMETRY_UPDATE', ({ mission_id, lat, lng }) => {
@@ -410,6 +420,8 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
       });
       _generateNodes(mapRef.current, signalStateRef, coords, mission_id);
     });
+
+    // DESTINATION_UPDATED is no longer needed since we show both pins from the start.
 
     const unsubIncident = wsClient.on('INCIDENT_LOGGED', ({ lat, lng }) => {
       const map = mapRef.current;
@@ -456,7 +468,10 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
         [`ambulance-${missionId}`, `route-${missionId}`].forEach(srcId => {
           if (map.getSource(srcId)) map.removeSource(srcId);
         });
-        missionMarkersRef.current[missionId]?.remove();
+      }
+      // Remove all labeled markers
+      for (const key of Object.keys(missionMarkersRef.current)) {
+        missionMarkersRef.current[key]?.remove();
       }
       missionMarkersRef.current = {};
       animStateRef.current = {};
@@ -497,14 +512,15 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
 
   // --- Helpers ---
 
-  function _upsertDestinationMarker(missionId, lngLat, color) {
+  function _upsertLabeledMarker(missionId, type, lngLat, color, labelText) {
     if (!mapRef.current) return;
-    missionMarkersRef.current[missionId]?.remove();
-    const el = createDestinationPinEl(color);
+    const refKey = `${missionId}-${type}`;
+    missionMarkersRef.current[refKey]?.remove();
+    const el = createDestinationPinEl(color, labelText);
     const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
       .setLngLat(lngLat)
       .addTo(mapRef.current);
-    missionMarkersRef.current[missionId] = marker;
+    missionMarkersRef.current[refKey] = marker;
   }
 
   function _upsertDriverMarker(driverId, lngLat, map) {

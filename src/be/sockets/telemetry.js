@@ -144,12 +144,31 @@ function initTelemetry(wss) {
         const { mission_id, new_phase } = parsed;
         if (activeMissions[mission_id]) {
           activeMissions[mission_id].current_phase = new_phase;
+          
+          if (new_phase === 'complete') {
+            delete activeMissions[mission_id];
+          }
+          
+          let new_polyline;
+          let dest_coords;
+          
           if (new_phase === 'to_hospital') {
-            activeMissions[mission_id].upcomingNodes = extractNodesFromPolyline(activeMissions[mission_id].leg_to_hospital);
+            new_polyline = activeMissions[mission_id].leg_to_hospital;
+            dest_coords = activeMissions[mission_id].hospital_coords;
+            if (new_polyline) activeMissions[mission_id].upcomingNodes = extractNodesFromPolyline(new_polyline);
           } else if (new_phase === 'to_base') {
-            activeMissions[mission_id].upcomingNodes = extractNodesFromPolyline(activeMissions[mission_id].leg_to_base);
+            new_polyline = activeMissions[mission_id].leg_to_base;
+            dest_coords = activeMissions[mission_id].base_coords;
+            if (new_polyline) activeMissions[mission_id].upcomingNodes = extractNodesFromPolyline(new_polyline);
           }
           console.log(`[Telemetry] PHASE_CHANGE: ${mission_id} → ${new_phase}`);
+          
+          if (new_polyline) {
+            broadcast({ type: 'ROUTE_UPDATED', mission_id, new_polyline });
+          }
+          if (dest_coords) {
+            broadcast({ type: 'DESTINATION_UPDATED', mission_id, dest_coords });
+          }
         }
         broadcast(parsed); // tell all clients to update displayed route
         return;
