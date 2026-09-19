@@ -124,9 +124,9 @@ function initTelemetry(wss) {
         return;
       }
 
-      // ── TELEMETRY_UPDATE: { mission_id, lat, lng, speed }
+      // ── TELEMETRY_UPDATE: { mission_id, lat, lng, speed, unit_id }
       if (parsed.lat !== undefined && parsed.speed !== undefined && parsed.mission_id) {
-        const { mission_id, lat, lng, speed } = parsed;
+        const { mission_id, unit_id, lat, lng, speed } = parsed;
         await updateTelemetry(mission_id, lat, lng, speed);
 
         const mission = activeMissions[mission_id];
@@ -135,7 +135,7 @@ function initTelemetry(wss) {
             broadcast(eventPayload);
           });
         }
-        broadcast(parsed);
+        broadcast({ type: 'TELEMETRY_UPDATE', mission_id, unit_id, lat, lng, speed });
         return;
       }
 
@@ -260,28 +260,24 @@ function initTelemetry(wss) {
       if (parsed.request_state) {
         // Replay all active missions
         for (const [missionId, missionData] of Object.entries(activeMissions)) {
-          sendToClient(ws, {
-            mission_id: missionId,
-            priority: missionData.priority,
-            unit_id: missionData.unit_id,
-            leg_to_incident: missionData.leg_to_incident,
-            leg_to_hospital: missionData.leg_to_hospital,
-            leg_to_base: missionData.leg_to_base,
-            incident_coords: missionData.incident_coords,
-            hospital_coords: missionData.hospital_coords,
-            base_coords: missionData.base_coords,
-            current_phase: missionData.current_phase
-          });
-
+          // Send TELEMETRY_UPDATE first so frontend simulator knows where to start
           const latestState = await getTelemetry(missionId);
           if (latestState && Object.keys(latestState).length > 0) {
             sendToClient(ws, {
+              type: 'TELEMETRY_UPDATE',
               mission_id: missionId,
+              unit_id: missionData.unit_id,
+              is_recovery: true,
               lat: parseFloat(latestState.lat),
               lng: parseFloat(latestState.lng),
               speed: parseFloat(latestState.speed)
             });
           }
+
+          sendToClient(ws, {
+            type: 'MISSION_START',
+            ...missionData
+          });
         }
         // Replay all registered drivers
         for (const driver of Object.values(registeredDrivers)) {
@@ -309,28 +305,23 @@ function initTelemetry(wss) {
     // Immediately replay all active missions and drivers to the new client
     (async () => {
       for (const [missionId, missionData] of Object.entries(activeMissions)) {
-        sendToClient(ws, {
-          mission_id: missionId,
-          priority: missionData.priority,
-          unit_id: missionData.unit_id,
-          leg_to_incident: missionData.leg_to_incident,
-          leg_to_hospital: missionData.leg_to_hospital,
-          leg_to_base: missionData.leg_to_base,
-          incident_coords: missionData.incident_coords,
-          hospital_coords: missionData.hospital_coords,
-          base_coords: missionData.base_coords,
-          current_phase: missionData.current_phase
-        });
-
         const latestState = await getTelemetry(missionId);
         if (latestState && Object.keys(latestState).length > 0) {
           sendToClient(ws, {
+            type: 'TELEMETRY_UPDATE',
             mission_id: missionId,
+            unit_id: missionData.unit_id,
+            is_recovery: true,
             lat: parseFloat(latestState.lat),
             lng: parseFloat(latestState.lng),
             speed: parseFloat(latestState.speed)
           });
         }
+
+        sendToClient(ws, {
+          type: 'MISSION_START',
+          ...missionData
+        });
       }
 
       // Replay registered drivers

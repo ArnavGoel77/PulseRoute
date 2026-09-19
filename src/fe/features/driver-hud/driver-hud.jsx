@@ -16,11 +16,21 @@ const PHASE_COLORS = {
   to_base:     'text-emerald-400 border-emerald-700 bg-emerald-900/20',
 };
 
+// Runs the GPS simulation loop in the background and reports state back to HUD
+function DriverSimulator({ driverId, onStateChange }) {
+  const state = useGPSSimulator(driverId);
+  useEffect(() => {
+    onStateChange(driverId, state);
+  }, [state, driverId, onStateChange]);
+  return null;
+}
+
 export default function DriverHud() {
   useEffect(() => { wsClient.connect(); }, []);
 
   const [drivers, setDrivers]               = useState([]);
   const [selectedDriverId, setSelectedDriverId] = useState(null);
+  const [simStates, setSimStates] = useState({});
 
   // Subscribe to driver store so the pill list updates live
   useEffect(() => {
@@ -35,10 +45,15 @@ export default function DriverHud() {
     return () => { unsub(); unsubWs(); };
   }, []);
 
+  const handleStateChange = React.useCallback((id, state) => {
+    setSimStates(prev => ({ ...prev, [id]: state }));
+  }, []);
+
+  const activeState = simStates[selectedDriverId] || {};
   const {
     currentLocation, speed, eta, distanceLeft,
     activeMissionId, currentPhase, turnInstruction, turnDistance
-  } = useGPSSimulator(selectedDriverId);
+  } = activeState;
 
   const [signalStatus, setSignalStatus]       = useState(null);
   const [recenterTrigger, setRecenterTrigger] = useState(0);
@@ -65,6 +80,11 @@ export default function DriverHud() {
             watchMissionId={activeMissionId}
           />
         </div>
+
+        {/* Simulators for all drivers keep state alive continuously */}
+        {drivers.map(d => (
+          <DriverSimulator key={d.id} driverId={d.id} onStateChange={handleStateChange} />
+        ))}
 
         {/* Top HUD Card */}
         <div className="absolute top-4 left-4 right-4 z-20">
