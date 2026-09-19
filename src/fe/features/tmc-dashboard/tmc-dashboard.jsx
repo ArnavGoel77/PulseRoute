@@ -181,12 +181,12 @@ export default function TmcCommandDashboard() {
   };
 
   return (
-    <div className="bg-[#0b0b0b] flex items-start relative w-screen h-screen overflow-hidden">
+    <div className="bg-gray-100 dark:bg-[#0b0b0b] flex flex-col md:flex-row md:items-start relative w-screen h-screen overflow-hidden transition-colors duration-300">
 
-      {/* ── Left: Live Map ── */}
-      <div className="flex-[1_0_0] h-full min-w-px relative overflow-clip">
+      {/* ── Top/Left: Live Map ── */}
+      <div className="flex-[1_0_0] h-[40vh] md:h-full min-w-px relative overflow-clip z-0">
         <div className="absolute top-4 left-4 z-10 pointer-events-none">
-          <p className="font-semibold text-[11px] text-[#8b8b8b] tracking-[1.32px]">CITY GRID / LIVE DIGITAL TWIN</p>
+          <p className="font-semibold text-[11px] text-gray-500 dark:text-[#8b8b8b] tracking-[1.32px] transition-colors duration-300">CITY GRID / LIVE DIGITAL TWIN</p>
         </div>
 
         {roadblockModeActive && (
@@ -210,27 +210,27 @@ export default function TmcCommandDashboard() {
         />
       </div>
 
-      {/* ── Right: Control Panel ── */}
-      <div className="bg-[#141414] border-l border-[#2a2a2a] flex flex-col h-full shrink-0 w-[360px] min-h-0">
-        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-6 flex flex-col gap-5">
+      {/* ── Bottom/Right: Control Panel ── */}
+      <div className="bg-white dark:bg-[#141414] border-t md:border-t-0 md:border-l border-gray-300 dark:border-[#2a2a2a] flex flex-col shrink-0 w-full md:w-[360px] md:h-full min-h-0 transition-colors duration-300 shadow-xl dark:shadow-none z-10">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-5 py-6 flex flex-col gap-5">
 
           {/* Header */}
           <div className="flex flex-col gap-1 shrink-0">
-            <p className="font-semibold text-[18px] text-[#f5f5f5]">CHAOS CONTROL</p>
-            <p className="font-mono text-[12px] text-[#8b8b8b]">{`TMC-07  /  UTC  ${clock}`}</p>
+            <p className="font-semibold text-[18px] text-gray-900 dark:text-[#f5f5f5] transition-colors duration-300">CHAOS CONTROL</p>
+            <p className="font-mono text-[12px] text-gray-500 dark:text-[#8b8b8b] transition-colors duration-300">{`TMC-07  /  UTC  ${clock}`}</p>
           </div>
 
           {/* ── Register Driver ── */}
           <div className="flex flex-col gap-3 shrink-0">
-            <p className="font-semibold text-[11px] text-[#8b8b8b] tracking-[1.32px] uppercase">Register Unit</p>
-            <div className="bg-[#2a2a2a] h-px w-full" />
+            <p className="font-semibold text-[11px] text-gray-500 dark:text-[#8b8b8b] tracking-[1.32px] uppercase transition-colors duration-300">Register Unit</p>
+            <div className="bg-gray-300 dark:bg-[#2a2a2a] h-px w-full transition-colors duration-300" />
             <form onSubmit={handleRegisterDriver} className="flex flex-col gap-2">
               <input
                 type="text"
                 value={driverIdInput}
                 onChange={e => setDriverIdInput(e.target.value)}
                 placeholder="Unit code (AMB-1)"
-                className="w-full bg-[#1e1e1e] border border-[#333] rounded px-3 py-2 text-xs font-mono text-emerald-400 focus:outline-none focus:border-emerald-500"
+                className="w-full bg-gray-50 dark:bg-[#1e1e1e] border border-gray-300 dark:border-[#333] rounded px-3 py-2 text-xs font-mono text-emerald-600 dark:text-emerald-400 focus:outline-none focus:border-emerald-500 transition-colors duration-300"
               />
               <div className="flex gap-2">
                 <input
@@ -238,14 +238,14 @@ export default function TmcCommandDashboard() {
                   value={driverLat}
                   onChange={e => setDriverLat(e.target.value)}
                   placeholder="Latitude"
-                  className="flex-1 bg-[#1e1e1e] border border-[#333] rounded px-3 py-2 text-xs font-mono focus:outline-none focus:border-emerald-500"
+                  className="flex-1 bg-gray-50 dark:bg-[#1e1e1e] border border-gray-300 dark:border-[#333] rounded px-3 py-2 text-xs font-mono focus:outline-none focus:border-emerald-500 transition-colors duration-300"
                 />
                 <input
                   type="text"
                   value={driverLng}
                   onChange={e => setDriverLng(e.target.value)}
                   placeholder="Longitude"
-                  className="flex-1 bg-[#1e1e1e] border border-[#333] rounded px-3 py-2 text-xs font-mono focus:outline-none focus:border-emerald-500"
+                  className="flex-1 bg-gray-50 dark:bg-[#1e1e1e] border border-gray-300 dark:border-[#333] rounded px-3 py-2 text-xs font-mono focus:outline-none focus:border-emerald-500 transition-colors duration-300"
                 />
               </div>
               {driverError && <p className="text-red-400 text-[11px]">{driverError}</p>}
@@ -261,14 +261,14 @@ export default function TmcCommandDashboard() {
             {drivers.length > 0 && (
               <div className="flex flex-col gap-1 mt-1">
                 {drivers.map(d => (
-                  <div key={d.id} className="flex items-center justify-between bg-[#1e1e1e] border border-[#2a2a2a] rounded px-3 py-1.5 group">
-                    <span className="font-mono text-xs text-emerald-400 font-bold">{d.id}</span>
-                    <span className="font-mono text-[10px] text-[#8b8b8b]">{d.lat?.toFixed(4)}, {d.lng?.toFixed(4)}</span>
+                  <div key={d.id} className="flex items-center justify-between bg-gray-50 dark:bg-[#1e1e1e] border border-gray-300 dark:border-[#2a2a2a] rounded px-3 py-1.5 transition-colors duration-300 group">
+                    <span className="font-mono text-xs text-emerald-600 dark:text-emerald-400 font-bold">{d.id}</span>
+                    <span className="font-mono text-[10px] text-gray-500 dark:text-[#8b8b8b] transition-colors duration-300">{d.lat?.toFixed(4)}, {d.lng?.toFixed(4)}</span>
                     <div className="flex items-center gap-2">
                       <span className={`text-[10px] font-bold ${d.status === 'ON_MISSION' ? 'text-red-400' : 'text-emerald-400'}`}>
                         {d.status === 'ON_MISSION' ? '● MISSION' : '● AVAIL'}
                       </span>
-                      <button 
+                      <button
                         onClick={() => handleRemoveDriver(d.id)}
                         className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-400 font-bold ml-1 transition-opacity cursor-pointer"
                         title="Remove unit"
@@ -284,23 +284,23 @@ export default function TmcCommandDashboard() {
 
           {/* ── Active Missions ── */}
           <div className="flex flex-col gap-2 shrink-0">
-            <p className="font-semibold text-[11px] text-[#8b8b8b] tracking-[1.32px] uppercase">Active Missions ({activeMissions.length})</p>
-            <div className="bg-[#2a2a2a] h-px w-full" />
+            <p className="font-semibold text-[11px] text-gray-500 dark:text-[#8b8b8b] tracking-[1.32px] uppercase transition-colors duration-300">Active Missions ({activeMissions.length})</p>
+            <div className="bg-gray-300 dark:bg-[#2a2a2a] h-px w-full transition-colors duration-300" />
             {activeMissions.length === 0 ? (
-              <p className="font-mono text-[12px] text-[#444] italic">No active missions.</p>
+              <p className="font-mono text-[12px] text-gray-400 dark:text-[#444] italic transition-colors duration-300">No active missions.</p>
             ) : (
               activeMissions.map(mission => (
-                <div key={mission.id} className="border border-[#2a2a2a] flex flex-col gap-1 items-start px-3 py-2 w-full rounded">
+                <div key={mission.id} className="border border-gray-300 dark:border-[#2a2a2a] flex flex-col gap-1 items-start px-3 py-2 w-full rounded transition-colors duration-300">
                   <div className="flex items-center justify-between w-full">
-                    <span className="font-mono text-[13px] text-[#f5f5f5] font-bold">{mission.id}</span>
+                    <span className="font-mono text-[13px] text-gray-900 dark:text-[#f5f5f5] font-bold transition-colors duration-300">{mission.id}</span>
                     <div className="flex items-center gap-2">
-                      {mission.unit && <span className="text-[10px] text-emerald-400 font-mono">[{mission.unit}]</span>}
-                      <span className="bg-[#272727] px-2 py-0.5 rounded-full text-[10px] text-[#8b8b8b] font-semibold">{mission.status}</span>
+                      {mission.unit && <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">[{mission.unit}]</span>}
+                      <span className="bg-gray-200 dark:bg-[#272727] px-2 py-0.5 rounded-full text-[10px] text-gray-500 dark:text-[#8b8b8b] font-semibold transition-colors duration-300">{mission.status}</span>
                     </div>
                   </div>
                   <div className="flex items-center justify-between w-full">
-                    <span className="font-mono text-[11px] text-[#8b8b8b]">{mission.priority}</span>
-                    <span className={`font-mono text-[10px] font-bold ${PHASE_COLORS[mission.phase] || 'text-[#8b8b8b]'}`}>
+                    <span className="font-mono text-[11px] text-gray-500 dark:text-[#8b8b8b] transition-colors duration-300">{mission.priority}</span>
+                    <span className={`font-mono text-[10px] font-bold ${PHASE_COLORS[mission.phase] || 'text-gray-500 dark:text-[#8b8b8b]'}`}>
                       {mission.phase?.replace(/_/g, ' ').toUpperCase()}
                     </span>
                   </div>
@@ -311,12 +311,12 @@ export default function TmcCommandDashboard() {
 
           {/* ── Live Event Feed ── */}
           <div className="flex flex-col gap-2 shrink-0">
-            <p className="font-semibold text-[11px] text-[#8b8b8b] tracking-[1.32px] uppercase">Live Event Feed</p>
-            <div className="bg-[#2a2a2a] h-px w-full" />
-            <div className="flex flex-col gap-1 w-full max-h-40 overflow-y-auto">
+            <p className="font-semibold text-[11px] text-gray-500 dark:text-[#8b8b8b] tracking-[1.32px] uppercase transition-colors duration-300">Live Event Feed</p>
+            <div className="bg-gray-300 dark:bg-[#2a2a2a] h-px w-full transition-colors duration-300" />
+            <div className="flex flex-col gap-1 w-full max-h-40 overflow-y-auto overflow-x-hidden">
               {eventFeed.map((ev, i) => (
-                <p key={i} className={`font-mono text-[11px] leading-[16px] ${ev.dim ? 'text-[#555]' : 'text-[#f5f5f5]'}`}>
-                  <span className="text-[#444] mr-2">{ev.time}</span>{ev.text}
+                <p key={i} className={`font-mono text-[11px] leading-[16px] transition-colors duration-300 break-all ${ev.dim ? 'text-gray-400 dark:text-[#555]' : 'text-gray-700 dark:text-[#f5f5f5]'}`}>
+                  <span className="text-gray-500 dark:text-[#444] mr-2 transition-colors duration-300">{ev.time}</span>{ev.text}
                 </p>
               ))}
             </div>
@@ -324,9 +324,9 @@ export default function TmcCommandDashboard() {
 
           {/* ── Simulation Controls ── */}
           <div className="flex flex-col gap-3 shrink-0">
-            <p className="font-semibold text-[11px] text-[#8b8b8b] tracking-[1.32px] uppercase">Simulation Controls</p>
-            <div className="bg-[#2a2a2a] h-px w-full" />
-            <p className="font-mono text-[12px] text-[#8b8b8b]">
+            <p className="font-semibold text-[11px] text-gray-500 dark:text-[#8b8b8b] tracking-[1.32px] uppercase transition-colors duration-300">Simulation Controls</p>
+            <div className="bg-gray-300 dark:bg-[#2a2a2a] h-px w-full transition-colors duration-300" />
+            <p className="font-mono text-[12px] text-gray-500 dark:text-[#8b8b8b] transition-colors duration-300">
               {roadblockModeActive ? '⚡ Click map to drop incident...' : 'Inject a network incident into the live model.'}
             </p>
 
@@ -334,29 +334,29 @@ export default function TmcCommandDashboard() {
               id="drop-roadblock-btn"
               onClick={handleRoadblockClick}
               className={`transition-colors border flex h-[44px] items-center justify-between px-4 shadow-md w-full cursor-pointer rounded
-                ${roadblockModeActive ? 'bg-red-900/60 border-red-500 animate-pulse' : 'bg-[#272727] hover:bg-[#333] border-[#2a2a2a]'}`}
+                ${roadblockModeActive ? 'bg-red-100 dark:bg-red-900/60 border-red-300 dark:border-red-500 animate-pulse' : 'bg-gray-50 dark:bg-[#272727] hover:bg-gray-200 dark:hover:bg-[#333] border-gray-300 dark:border-[#2a2a2a]'}`}
             >
-              <p className={`font-semibold text-[11px] tracking-[1.32px] ${roadblockModeActive ? 'text-red-300' : 'text-[#f5f5f5]'}`}>
+              <p className={`font-semibold text-[11px] tracking-[1.32px] transition-colors duration-300 ${roadblockModeActive ? 'text-red-700 dark:text-red-300' : 'text-gray-900 dark:text-[#f5f5f5]'}`}>
                 {roadblockModeActive ? 'CANCEL ROADBLOCK' : 'DROP ROADBLOCK'}
               </p>
-              <p className="font-mono text-[12px] text-[#8b8b8b]">{roadblockModeActive ? '[ × ]' : '[ + ]'}</p>
+              <p className="font-mono text-[12px] text-gray-500 dark:text-[#8b8b8b] transition-colors duration-300">{roadblockModeActive ? '[ × ]' : '[ + ]'}</p>
             </button>
 
             <div className="flex gap-2 w-full">
               <button onClick={handlePauseToggle}
-                className={`flex-1 h-[40px] flex items-center justify-center border rounded text-[11px] font-bold tracking-wider cursor-pointer transition-colors ${demoPaused ? 'bg-orange-600 border-orange-500' : 'bg-[#272727] hover:bg-[#333] border-[#2a2a2a]'} text-[#f5f5f5]`}>
+                className={`flex-1 h-[40px] flex items-center justify-center border rounded text-[11px] font-bold tracking-wider cursor-pointer transition-colors ${demoPaused ? 'bg-orange-500 border-orange-400 text-white dark:bg-orange-600 dark:border-orange-500 dark:text-white' : 'bg-gray-100 dark:bg-[#272727] hover:bg-gray-200 dark:hover:bg-[#333] border-gray-300 dark:border-[#2a2a2a] text-gray-700 dark:text-[#f5f5f5]'}`}>
                 {demoPaused ? 'RESUME' : 'PAUSE'}
               </button>
               <button onClick={() => handleSpeedChange(1)}
-                className={`flex-1 h-[40px] flex items-center justify-center border rounded text-[11px] font-bold tracking-wider cursor-pointer transition-colors ${demoSpeed === 1 && !demoPaused ? 'bg-emerald-600 border-emerald-500' : 'bg-[#272727] hover:bg-[#333] border-[#2a2a2a]'} text-[#f5f5f5]`}>
+                className={`flex-1 h-[40px] flex items-center justify-center border rounded text-[11px] font-bold tracking-wider cursor-pointer transition-colors ${demoSpeed === 1 && !demoPaused ? 'bg-emerald-500 border-emerald-400 text-white dark:bg-emerald-600 dark:border-emerald-500 dark:text-white' : 'bg-gray-100 dark:bg-[#272727] hover:bg-gray-200 dark:hover:bg-[#333] border-gray-300 dark:border-[#2a2a2a] text-gray-700 dark:text-[#f5f5f5]'}`}>
                 1×
               </button>
               <button onClick={() => handleSpeedChange(3)}
-                className={`flex-1 h-[40px] flex items-center justify-center border rounded text-[11px] font-bold tracking-wider cursor-pointer transition-colors ${demoSpeed === 3 && !demoPaused ? 'bg-emerald-600 border-emerald-500' : 'bg-[#272727] hover:bg-[#333] border-[#2a2a2a]'} text-[#f5f5f5]`}>
+                className={`flex-1 h-[40px] flex items-center justify-center border rounded text-[11px] font-bold tracking-wider cursor-pointer transition-colors ${demoSpeed === 3 && !demoPaused ? 'bg-emerald-500 border-emerald-400 text-white dark:bg-emerald-600 dark:border-emerald-500 dark:text-white' : 'bg-gray-100 dark:bg-[#272727] hover:bg-gray-200 dark:hover:bg-[#333] border-gray-300 dark:border-[#2a2a2a] text-gray-700 dark:text-[#f5f5f5]'}`}>
                 3×
               </button>
               <button onClick={() => handleSpeedChange(10)}
-                className={`flex-1 h-[40px] flex items-center justify-center border rounded text-[11px] font-bold tracking-wider cursor-pointer transition-colors ${demoSpeed === 10 && !demoPaused ? 'bg-emerald-600 border-emerald-500' : 'bg-[#272727] hover:bg-[#333] border-[#2a2a2a]'} text-[#f5f5f5]`}>
+                className={`flex-1 h-[40px] flex items-center justify-center border rounded text-[11px] font-bold tracking-wider cursor-pointer transition-colors ${demoSpeed === 10 && !demoPaused ? 'bg-emerald-500 border-emerald-400 text-white dark:bg-emerald-600 dark:border-emerald-500 dark:text-white' : 'bg-gray-100 dark:bg-[#272727] hover:bg-gray-200 dark:hover:bg-[#333] border-gray-300 dark:border-[#2a2a2a] text-gray-700 dark:text-[#f5f5f5]'}`}>
                 10×
               </button>
             </div>
@@ -389,17 +389,17 @@ export default function TmcCommandDashboard() {
         </div>
 
         {/* System Status Footer */}
-        <div className="shrink-0 border-t border-[#2a2a2a] px-5 py-4 flex flex-col gap-2">
-          <p className="font-semibold text-[11px] text-[#8b8b8b] tracking-[1.32px] uppercase">System Status</p>
+        <div className="shrink-0 border-t border-gray-300 dark:border-[#2a2a2a] px-5 py-4 flex flex-col gap-2 transition-colors duration-300">
+          <p className="font-semibold text-[11px] text-gray-500 dark:text-[#8b8b8b] tracking-[1.32px] uppercase transition-colors duration-300">System Status</p>
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-red-500'}`} />
-            <p className="font-mono text-[12px] text-[#f5f5f5]">
+            <p className="font-mono text-[12px] text-gray-900 dark:text-[#f5f5f5] transition-colors duration-300">
               {wsConnected ? 'SYNCED / BACKEND LIVE' : 'RECONNECTING...'}
             </p>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_#3b82f6]" />
-            <p className="font-mono text-[12px] text-[#8b8b8b]">
+            <p className="font-mono text-[12px] text-gray-500 dark:text-[#8b8b8b] transition-colors duration-300">
               {drivers.length} unit{drivers.length !== 1 ? 's' : ''} registered · {activeMissions.length} mission{activeMissions.length !== 1 ? 's' : ''} active
             </p>
           </div>
