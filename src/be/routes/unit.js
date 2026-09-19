@@ -24,7 +24,7 @@ router.post('/base', async (req, res) => {
     };
 
     if (redis && typeof redis.hset === 'function') {
-      await redis.hset(key, payload);
+      await redis.hset(key, 'base_lat', String(base_lat), 'base_lng', String(base_lng), 'updated_at', String(Date.now()));
     }
 
     return res.json({ success: true, unit_id, payload });

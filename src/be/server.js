@@ -83,6 +83,11 @@ initTelemetry(wss);
 // to broadcast it out to all connected WebSocket clients. We do this here
 // to avoid circular imports between telemetry.js and anomaly-detector.js.
 rerouteEmitter.on('ROUTE_UPDATED', (payload) => {
+  // Also update the telemetry module's in-memory mission state so the phase
+  // polylines stay in sync for future state replays and preemption node generation.
+  const { updateMissionPolyline } = require('./sockets/telemetry');
+  updateMissionPolyline(payload);
+
   const message = JSON.stringify(payload);
   wss.clients.forEach((client) => {
     if (client.readyState === 1) { // WebSocket.OPEN

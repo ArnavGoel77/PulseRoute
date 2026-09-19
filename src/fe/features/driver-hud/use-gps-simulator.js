@@ -12,6 +12,7 @@
  */
 import { useState, useEffect, useRef } from 'react';
 import wsClient from '../../services/websocket-client';
+import { driverStore } from '../../services/driver-store';
 import * as turf from '@turf/turf';
 
 function decodePolyline(encoded) {
@@ -43,6 +44,7 @@ export function useGPSSimulator(driverId = null) {
   const currentLocationRef  = useRef(null);
   const driverIdRef         = useRef(driverId);
   const recoveredPosRef     = useRef(null); // last known Redis position on state recovery
+  const phaseTransitionPendingRef = useRef(false); // prevents duplicate phase-end transitions
 
   const [currentLocation, setCurrentLocation] = useState(null);
   const [speed, setSpeed]                     = useState(0);
@@ -195,23 +197,29 @@ export function useGPSSimulator(driverId = null) {
     const interval = setInterval(() => {
       setRouteIndex(prevIndex => {
         if (prevIndex >= route.length - 1) {
-          const phase = currentPhaseRef.current;
-          if (phase === 'to_incident') {
-            setSpeed(0);
-            setTurnInstruction('Arrived at Incident');
-            setTimeout(() => switchToPhase('to_hospital', missionIdRef.current), 2000);
-          } else if (phase === 'to_hospital') {
-            setSpeed(0);
-            setTurnInstruction('Patient Loaded — Heading to Hospital');
-            setTimeout(() => switchToPhase('to_base', missionIdRef.current), 2000);
-          } else if (phase === 'to_base') {
-            setSpeed(0);
-            setTurnInstruction('Mission Complete — Back at Base');
-            setEta('--');
-            setDistanceLeft('0.0 km');
-            setMissionActive(false);
-            missionIdRef.current = null;
-            setActiveMissionId(null);
+          // Guard: prevent duplicate phase transitions if interval fires again before state updates
+          if (!phaseTransitionPendingRef.current) {
+            phaseTransitionPendingRef.current = true;
+            const phase = currentPhaseRef.current;
+            if (phase === 'to_incident') {
+              setSpeed(0);
+              setTurnInstruction('Arrived at Incident');
+              setTimeout(() => { phaseTransitionPendingRef.current = false; switchToPhase('to_hospital', missionIdRef.current); }, 2000);
+            } else if (phase === 'to_hospital') {
+              setSpeed(0);
+              setTurnInstruction('Patient Loaded — Heading to Hospital');
+              setTimeout(() => { phaseTransitionPendingRef.current = false; switchToPhase('to_base', missionIdRef.current); }, 2000);
+            } else if (phase === 'to_base') {
+              setSpeed(0);
+              setTurnInstruction('Mission Complete — Back at Base');
+              setEta('--');
+              setDistanceLeft('0.0 km');
+              setMissionActive(false);
+              missionIdRef.current = null;
+              setActiveMissionId(null);
+              // Mark driver as available again so CAD can re-dispatch them
+              if (driverIdRef.current) driverStore.setAvailable(driverIdRef.current);
+            }
           }
           return prevIndex;
         }
