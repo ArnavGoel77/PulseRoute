@@ -167,15 +167,16 @@ router.get('/', async (req, res) => {
  */
 router.get('/legs', async (req, res) => {
   try {
-    const { incident_lat, incident_lng, hospital_lat, hospital_lng, unit_id } = req.query;
+    const { incident_lat, incident_lng, hospital_lat, hospital_lng, unit_id, base_lat: query_base_lat, base_lng: query_base_lng } = req.query;
 
     if (!incident_lat || !incident_lng || !hospital_lat || !hospital_lng) {
       return res.status(400).json({ error: 'missing_coordinates', required: 'incident_lat, incident_lng, hospital_lat, hospital_lng' });
     }
 
-    // Fetch base location from Redis
-    let base_lat = null, base_lng = null;
-    if (unit_id && redis && typeof redis.hgetall === 'function') {
+    // Fetch base location from query params, or fallback to Redis
+    let base_lat = query_base_lat || null;
+    let base_lng = query_base_lng || null;
+    if (!base_lat && !base_lng && unit_id && redis && typeof redis.hgetall === 'function') {
       try {
         const baseData = await redis.hgetall(`unit:${unit_id}:base`);
         if (baseData && baseData.base_lat && baseData.base_lng) {

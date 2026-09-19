@@ -93,7 +93,7 @@ export default function CadForm() {
       // Do NOT pass driver lat/lng as base — the driver's live position is wherever
       // they are currently driving (the incident area), not their dispatch station.
       // The /legs backend resolves base from Redis (unit registration) or uses the default.
-      const legsUrl = `/api/route/legs?incident_lat=${incident_lat}&incident_lng=${incident_lng}&hospital_lat=${hospital_lat}&hospital_lng=${hospital_lng}&unit_id=${encodeURIComponent(unit_id_param)}`;
+      const legsUrl = `/api/route/legs?incident_lat=${incident_lat}&incident_lng=${incident_lng}&hospital_lat=${hospital_lat}&hospital_lng=${hospital_lng}&unit_id=${encodeURIComponent(unit_id_param)}&base_lat=${selectedDriver.lat}&base_lng=${selectedDriver.lng}`;
 
       const res = await fetch(legsUrl);
       const data = await res.json();

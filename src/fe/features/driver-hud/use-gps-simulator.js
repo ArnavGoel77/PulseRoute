@@ -45,6 +45,7 @@ export function useGPSSimulator(driverId = null) {
   const driverIdRef         = useRef(driverId);
   const recoveredPosRef     = useRef(null); // last known Redis position on state recovery
   const phaseTransitionPendingRef = useRef(false); // prevents duplicate phase-end transitions
+  const baseCoordsRef         = useRef(null); // original location to teleport back to
 
   const [currentLocation, setCurrentLocation] = useState(null);
   const [speed, setSpeed]                     = useState(0);
@@ -87,18 +88,23 @@ export function useGPSSimulator(driverId = null) {
     missionIdRef.current = null;
     legsRef.current = { to_incident: [], to_hospital: [], to_base: [] };
     currentLocationRef.current = null;
+    baseCoordsRef.current = null;
     // Request fresh state from backend
     setTimeout(() => wsClient.send({ request_state: true }), 80);
   }, [driverId]);
 
   useEffect(() => {
     const unsubMission = wsClient.on('MISSION_START', (payload) => {
-      const { mission_id, unit_id, leg_to_incident, leg_to_hospital, leg_to_base, current_phase } = payload;
+      const { mission_id, unit_id, leg_to_incident, leg_to_hospital, leg_to_base, current_phase, base_coords } = payload;
 
       // Filter: only accept missions for this driver
       if (driverIdRef.current && unit_id && unit_id !== driverIdRef.current) return;
       // If we already have a different active mission, skip
       if (missionIdRef.current && missionIdRef.current !== mission_id) return;
+
+      if (base_coords) {
+        baseCoordsRef.current = [base_coords.lng, base_coords.lat];
+      }
 
       legsRef.current = {
         to_incident: decodePolyline(leg_to_incident),
@@ -192,6 +198,9 @@ export function useGPSSimulator(driverId = null) {
   useEffect(() => {
     if (!missionActive || !activeMissionId || demoPaused || route.length === 0) return;
 
+    // We have a new route or state, so any pending transitions are now resolved.
+    phaseTransitionPendingRef.current = false;
+
     const intervalTime = Math.max(100, 1000 / demoSpeed);
 
     const interval = setInterval(() => {
@@ -204,12 +213,44 @@ export function useGPSSimulator(driverId = null) {
             if (phase === 'to_incident') {
               setSpeed(0);
               setTurnInstruction('Arrived at Incident');
-              setTimeout(() => { phaseTransitionPendingRef.current = false; switchToPhase('to_hospital', missionIdRef.current); }, 2000);
+              setTimeout(() => { switchToPhase('to_hospital', missionIdRef.current); }, 2000);
             } else if (phase === 'to_hospital') {
               setSpeed(0);
               setTurnInstruction('Patient Loaded — Heading to Hospital');
-              setTimeout(() => { phaseTransitionPendingRef.current = false; switchToPhase('to_base', missionIdRef.current); }, 2000);
+              setTimeout(() => { 
+                
+                // Teleport back to original location
+                if (baseCoordsRef.current) {
+                  setCurrentLocation(baseCoordsRef.current);
+                  currentLocationRef.current = baseCoordsRef.current;
+                  wsClient.send({
+                    mission_id: missionIdRef.current,
+                    lat: baseCoordsRef.current[1],
+                    lng: baseCoordsRef.current[0],
+                    speed: 0
+                  });
+                  wsClient.send({
+                    mission_id: missionIdRef.current,
+                    new_phase: 'complete'
+                  });
+                  wsClient.send({
+                    driver_id: driverIdRef.current,
+                    lat: baseCoordsRef.current[1],
+                    lng: baseCoordsRef.current[0]
+                  });
+                }
+                
+                setTurnInstruction('Mission Complete — Back at Base');
+                setEta('--');
+                setDistanceLeft('0.0 km');
+                setMissionActive(false);
+                missionIdRef.current = null;
+                setActiveMissionId(null);
+                // Mark driver as available again so CAD can re-dispatch them
+                if (driverIdRef.current) driverStore.setAvailable(driverIdRef.current);
+              }, 2000);
             } else if (phase === 'to_base') {
+              // Now obsolete due to instant teleportation, but kept for safety.
               setSpeed(0);
               setTurnInstruction('Mission Complete — Back at Base');
               setEta('--');
@@ -217,7 +258,6 @@ export function useGPSSimulator(driverId = null) {
               setMissionActive(false);
               missionIdRef.current = null;
               setActiveMissionId(null);
-              // Mark driver as available again so CAD can re-dispatch them
               if (driverIdRef.current) driverStore.setAvailable(driverIdRef.current);
             }
           }
