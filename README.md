@@ -32,7 +32,7 @@
 PulseRoute (internally codenamed **Horizon Grid**) is a full-stack, real-time emergency vehicle management system. It simulates an end-to-end ambulance dispatch pipeline:
 
 1. A **Dispatcher** creates a mission by entering an incident location and hospital.
-2. The system auto-assigns the closest available ambulance and calculates a 3-phase route (Base ? Incident ? Hospital ? Base) using OSRM.
+2. The system auto-assigns the closest available ambulance and calculates a 3-phase route (Base → Incident → Hospital → Base) using OSRM.
 3. A **GPS Simulator** drives the ambulance along the polyline, broadcasting live telemetry at 1 Hz over WebSocket.
 4. The **Traffic Management Center (TMC)** monitors all units on a live map, can drop roadblocks, and watches signal preemption events fire in real time.
 5. The **Driver HUD** gives the ambulance crew turn-by-turn navigation with a stable ETA.
@@ -42,19 +42,19 @@ PulseRoute (internally codenamed **Horizon Grid**) is a full-stack, real-time em
 
 ## Features
 
-- ? **3-Phase Mission Routing** — Base ? Incident ? Hospital ? Base, each leg fetched as an independent polyline
-- ? **Live GPS Simulation** — Ambulance traverses the route at a configurable speed with telemetry emitted via WebSocket
-- ? **Multi-Unit Fleet** — Register multiple ambulance units (AMB-1, AMB-2, etc.) with individual positions
-- ? **Auto-Dispatch** — Dispatcher CAD auto-suggests the closest available unit to the incident
-- ? **Signal Preemption** — Broadcasts `SIGNAL_PREEMPT` (GREEN) 10 seconds before reaching an intersection node; clears with `ALL_RED` after passing
-- ? **Live Map Engine** — WebGL-accelerated Mapbox GL JS with real-time ambulance movement, route overlays, and roadblock markers
-- ? **Dynamic Rerouting** — Drop roadblocks from the Dispatcher CAD or TMC map; the backend uses the **Mapbox Directions API** to calculate a native exclusion-based detour around ALL active roadblocks simultaneously
-- ? **Stable ETA** — ETA is decoupled from instantaneous speed fluctuation and uses the routing engine's own average speed per leg; formatted Google Maps-style (minutes only when > 2 min)
-- ? **State Persistence & Recovery** — New/reconnecting clients receive a full state replay (missions, drivers, roadblocks) via Redis + WebSocket
-- ? **Driver HUD Persistence** — Switching between driver views in the HUD does not reset their mission state; each DriverSimulator runs independently in the background
-- ? **Driver Auto-Release** — Ambulances are automatically freed back to AVAILABLE status when a mission completes or is reset
-- ? **Dark/Light Mode** — System-wide theme toggle
-- ? **Simulation Controls** — Pause, resume, and speed-multiply the simulation from the TMC panel
+- ✅ **3-Phase Mission Routing** — Base → Incident → Hospital → Base, each leg fetched as an independent polyline
+- ✅ **Live GPS Simulation** — Ambulance traverses the route at a configurable speed with telemetry emitted via WebSocket
+- ✅ **Multi-Unit Fleet** — Register multiple ambulance units (AMB-1, AMB-2, etc.) with individual positions
+- ✅ **Auto-Dispatch** — Dispatcher CAD auto-suggests the closest available unit to the incident
+- ✅ **Signal Preemption** — Broadcasts `SIGNAL_PREEMPT` (GREEN) 10 seconds before reaching an intersection node; clears with `ALL_RED` after passing
+- ✅ **Live Map Engine** — WebGL-accelerated Mapbox GL JS with real-time ambulance movement, route overlays, and roadblock markers
+- ✅ **Dynamic Rerouting** — Drop roadblocks from the Dispatcher CAD or TMC map; the backend uses the **Mapbox Directions API** to calculate a native exclusion-based detour around ALL active roadblocks simultaneously
+- ✅ **Stable ETA** — ETA is decoupled from instantaneous speed fluctuation and uses the routing engine's own average speed per leg; formatted Google Maps-style (minutes only when > 2 min)
+- ✅ **State Persistence & Recovery** — New/reconnecting clients receive a full state replay (missions, drivers, roadblocks) via Redis + WebSocket
+- ✅ **Driver HUD Persistence** — Switching between driver views in the HUD does not reset their mission state; each DriverSimulator runs independently in the background
+- ✅ **Driver Auto-Release** — Ambulances are automatically freed back to AVAILABLE status when a mission completes or is reset
+- ✅ **Dark/Light Mode** — System-wide theme toggle
+- ✅ **Simulation Controls** — Pause, resume, and speed-multiply the simulation from the TMC panel
 
 ---
 
@@ -62,26 +62,26 @@ PulseRoute (internally codenamed **Horizon Grid**) is a full-stack, real-time em
 
 ```
 BROWSER (Vite + React)
-+-- Dispatcher CAD Form     ? Mission intake, roadblock dropping
-+-- TMC Dashboard           ? Fleet monitor, event feed, signal viz
-+-- Driver HUD              ? GPS simulator, turn-by-turn, ETA
-         ¦
-         ? WebSocket (singleton with auto-reconnect)
++-- Dispatcher CAD Form     → Mission intake, roadblock dropping
++-- TMC Dashboard           → Fleet monitor, event feed, signal viz
++-- Driver HUD              → GPS simulator, turn-by-turn, ETA
+         |
+         → WebSocket (singleton with auto-reconnect)
 NODE.JS BACKEND (Express + ws)
-+-- server.js               ? Fuses REST + WS on a single HTTP server
-+-- telemetry.js            ? WS hub: mission state, driver registry, roadblocks, state replay
-+-- osrm.js                 ? /api/route — OSRM proxy, Redis cache, /legs endpoint
-+-- unit.js                 ? /api/unit/base — ambulance base persistence
-+-- tomtom.js               ? /api/incidents — TomTom traffic polling
-+-- eta-calculator.js       ? Intersection node proximity + SIGNAL_PREEMPT / ALL_RED
-+-- anomaly-detector.js     ? Spatial analysis + Mapbox rerouting engine
-+-- redis-client.js         ? Upstash Redis wrapper (telemetry r/w)
-         ¦
-         ? REST APIs
-+-- Upstash Redis            ? Telemetry state (mission:id:location hash, 60s TTL)
-+-- OSRM Public API          ? Polyline routing for all 3 legs
-+-- Mapbox Directions API    ? Live rerouting with native point exclusion
-+-- TomTom Traffic API       ? Real-time traffic incident polygons
++-- server.js               → Fuses REST + WS on a single HTTP server
++-- telemetry.js            → WS hub: mission state, driver registry, roadblocks, state replay
++-- osrm.js                 → /api/route — OSRM proxy, Redis cache, /legs endpoint
++-- unit.js                 → /api/unit/base — ambulance base persistence
++-- tomtom.js               → /api/incidents — TomTom traffic polling
++-- eta-calculator.js       → Intersection node proximity + SIGNAL_PREEMPT / ALL_RED
++-- anomaly-detector.js     → Spatial analysis + Mapbox rerouting engine
++-- redis-client.js         → Upstash Redis wrapper (telemetry r/w)
+         |
+         → REST APIs
++-- Upstash Redis            → Telemetry state (mission:id:location hash, 60s TTL)
++-- OSRM Public API          → Polyline routing for all 3 legs
++-- Mapbox Directions API    → Live rerouting with native point exclusion
++-- TomTom Traffic API       → Real-time traffic incident polygons
 ```
 
 ---
@@ -110,36 +110,36 @@ NODE.JS BACKEND (Express + ws)
 ```
 PulseRoute/
 +-- src/
-¦   +-- be/                           # Backend (Node.js)
-¦   ¦   +-- server.js                 # Express + WebSocket server fusion
-¦   ¦   +-- routes/
-¦   ¦   ¦   +-- osrm.js               # /api/route — OSRM proxy + Redis cache + /legs endpoint
-¦   ¦   ¦   +-- tomtom.js             # /api/incidents — TomTom traffic polling service
-¦   ¦   ¦   +-- unit.js               # /api/unit/base — ambulance base location storage
-¦   ¦   +-- services/
-¦   ¦   ¦   +-- redis-client.js       # Upstash Redis wrapper (updateTelemetry, getTelemetry)
-¦   ¦   ¦   +-- eta-calculator.js     # Intersection ETA + SIGNAL_PREEMPT / ALL_RED logic
-¦   ¦   ¦   +-- anomaly-detector.js   # Spatial anomaly detection + Mapbox rerouting engine
-¦   ¦   +-- sockets/
-¦   ¦       +-- telemetry.js          # WebSocket hub — all message routing, state, replay
-¦   ¦
-¦   +-- fe/                           # Frontend (React + Vite)
-¦       +-- App.jsx                   # Root view router (DISPATCHER / TMC / HUD)
-¦       +-- services/
-¦       ¦   +-- websocket-client.js   # WS singleton with auto-reconnect + payload router
-¦       ¦   +-- driver-store.js       # In-memory fleet registry (pub/sub pattern)
-¦       +-- features/
-¦           +-- dispatcher/
-¦           ¦   +-- cad-form.jsx      # Dispatch UI (mission intake, roadblock mode)
-¦           +-- driver-hud/
-¦           ¦   +-- driver-hud.jsx    # Driver HUD shell + multi-driver switcher
-¦           ¦   +-- use-gps-simulator.js  # GPS simulation hook (3-phase traversal + ETA)
-¦           +-- tmc-dashboard/
-¦           ¦   +-- tmc-dashboard.jsx # TMC Command Center (fleet, event feed, controls)
-¦           +-- map-engine/
-¦               +-- map-engine.jsx    # Mapbox GL JS engine (routes, markers, roadblocks)
-¦               +-- intersection-nodes.js  # Seeded GeoJSON intersection nodes
-¦
+|   +-- be/                           # Backend (Node.js)
+|   |   +-- server.js                 # Express + WebSocket server fusion
+|   |   +-- routes/
+|   |   |   +-- osrm.js               # /api/route — OSRM proxy + Redis cache + /legs endpoint
+|   |   |   +-- tomtom.js             # /api/incidents — TomTom traffic polling service
+|   |   |   +-- unit.js               # /api/unit/base — ambulance base location storage
+|   |   +-- services/
+|   |   |   +-- redis-client.js       # Upstash Redis wrapper (updateTelemetry, getTelemetry)
+|   |   |   +-- eta-calculator.js     # Intersection ETA + SIGNAL_PREEMPT / ALL_RED logic
+|   |   |   +-- anomaly-detector.js   # Spatial anomaly detection + Mapbox rerouting engine
+|   |   +-- sockets/
+|   |       +-- telemetry.js          # WebSocket hub — all message routing, state, replay
+|   |
+|   +-- fe/                           # Frontend (React + Vite)
+|       +-- App.jsx                   # Root view router (DISPATCHER / TMC / HUD)
+|       +-- services/
+|       |   +-- websocket-client.js   # WS singleton with auto-reconnect + payload router
+|       |   +-- driver-store.js       # In-memory fleet registry (pub/sub pattern)
+|       +-- features/
+|           +-- dispatcher/
+|           |   +-- cad-form.jsx      # Dispatch UI (mission intake, roadblock mode)
+|           +-- driver-hud/
+|           |   +-- driver-hud.jsx    # Driver HUD shell + multi-driver switcher
+|           |   +-- use-gps-simulator.js  # GPS simulation hook (3-phase traversal + ETA)
+|           +-- tmc-dashboard/
+|           |   +-- tmc-dashboard.jsx # TMC Command Center (fleet, event feed, controls)
+|           +-- map-engine/
+|               +-- map-engine.jsx    # Mapbox GL JS engine (routes, markers, roadblocks)
+|               +-- intersection-nodes.js  # Seeded GeoJSON intersection nodes
+|
 +-- render.yaml                       # Render backend deployment config
 +-- vercel.json                       # Vercel frontend deployment + API proxy config
 +-- package.json
@@ -221,12 +221,12 @@ All three views share the same WebSocket connection singleton and `driverStore` 
 
 ```
 1. REGISTER DRIVER (TMC Dashboard)
-   +-? Fill in driver ID (e.g., AMB-1) + lat/lng ? click Register
+   +-? Fill in driver ID (e.g., AMB-1) + lat/lng → click Register
        +-? Sends { driver_id, lat, lng } via WS
            +-? Backend stores in registeredDrivers{}; broadcasts DRIVER_REGISTERED
 
 2. DISPATCH MISSION (Dispatcher CAD)
-   +-? Enter incident + hospital coordinates ? pick unit ? Start Mission
+   +-? Enter incident + hospital coordinates → pick unit → Start Mission
        +-? Frontend calls GET /api/route/legs (3 OSRM requests in parallel)
            +-? Returns 3 encoded polylines + distances + durations for each leg
                +-? Frontend sends MISSION_START payload via WS
@@ -236,18 +236,18 @@ All three views share the same WebSocket connection singleton and `driverStore` 
    +-? Traverses leg_to_incident polyline point-by-point on setInterval
        +-? Emits TELEMETRY_UPDATE { mission_id, lat, lng, speed } each tick
            +-? Backend writes to Redis hash `mission:id:location` (60s TTL)
-               +-? Calls processTelemetryUpdate() ? checks proximity to intersection nodes
-               ¦    +-? ETA = 10s ? broadcast SIGNAL_PREEMPT (phase: GREEN)
-               ¦    +-? Passed node ? broadcast SIGNAL_RELEASE (phase: ALL_RED)
+               +-? Calls processTelemetryUpdate() → checks proximity to intersection nodes
+               |    +-? ETA = 10s → broadcast SIGNAL_PREEMPT (phase: GREEN)
+               |    +-? Passed node → broadcast SIGNAL_RELEASE (phase: ALL_RED)
                +-? Broadcasts TELEMETRY_UPDATE to all clients (map updates)
 
 4. PHASE TRANSITIONS (auto, driven by GPS simulator)
-   +-? End of leg_to_incident ? 2s delay ? switchToPhase('to_hospital')
-   +-? End of leg_to_hospital ? teleport ambulance back to base coords
-   ¦    +-? Send PHASE_CHANGE: complete ? backend deletes activeMissions[id]
+   +-? End of leg_to_incident → 2s delay → switchToPhase('to_hospital')
+   +-? End of leg_to_hospital → teleport ambulance back to base coords
+   |    +-? Send PHASE_CHANGE: complete → backend deletes activeMissions[id]
    +-? Driver freed: driverStore.setAvailable(driverId) called globally
 
-5. RESET (Dispatcher CAD ? STOP/RESET button)
+5. RESET (Dispatcher CAD → STOP/RESET button)
    +-? Sends RESET_SIMULATION via WS
        +-? Backend clears all activeMissions{}
            +-? driverStore auto-releases all ON_MISSION drivers
@@ -261,7 +261,7 @@ Every GPS tick (configurable interval based on demo speed):
 
 1. `useGPSSimulator` computes the next `[lng, lat]` coordinate on the current leg polyline
 2. Calls `wsClient.send({ type: 'TELEMETRY_UPDATE', mission_id, lat, lng, speed })`
-3. Backend `telemetry.js` receives it ? writes to Redis ? calls `processTelemetryUpdate()`
+3. Backend `telemetry.js` receives it → writes to Redis → calls `processTelemetryUpdate()`
 4. `eta-calculator.js` checks distance from vehicle to the next upcoming intersection node
 5. Backend broadcasts `TELEMETRY_UPDATE` to all connected WebSocket clients
 6. The `MapEngine` receives it and calls `map.setData()` on the ambulance GeoJSON source, smoothly animating the marker
@@ -273,10 +273,10 @@ Every GPS tick (configurable interval based on demo speed):
 `eta-calculator.js` implements a **rolling-horizon preemption window**:
 
 - Intersection nodes are extracted dynamically from the active leg polyline (10 evenly-spaced points) — no hardcoded data
-- When temporal distance to next node `= 10 seconds` at current speed ? broadcasts `{ intersection_id, phase: 'GREEN' }` (SIGNAL_PREEMPT)
+- When temporal distance to next node `= 10 seconds` at current speed → broadcasts `{ intersection_id, phase: 'GREEN' }` (SIGNAL_PREEMPT)
 - TMC map changes the node color to green; Driver HUD shows the preemption banner
 - Node is considered **passed** when distance starts increasing after being within 50m OR the vehicle is within 15m of the node
-- After passing ? broadcasts `{ intersection_id, phase: 'ALL_RED' }` (SIGNAL_RELEASE)
+- After passing → broadcasts `{ intersection_id, phase: 'ALL_RED' }` (SIGNAL_RELEASE)
 - TMC map returns the node to normal; Driver HUD banner clears
 
 ---
@@ -284,7 +284,7 @@ Every GPS tick (configurable interval based on demo speed):
 ### Dynamic Rerouting Around Roadblocks
 
 **Placing a roadblock:**
-- Dispatcher CAD: `DROP ROADBLOCK` button ? click anywhere on the map
+- Dispatcher CAD: `DROP ROADBLOCK` button → click anywhere on the map
 - TMC Dashboard: Click directly on the map while roadblock mode is active
 - Driver HUD: `BLOCK` panic button logs the vehicle's own current position
 
@@ -297,8 +297,8 @@ Every GPS tick (configurable interval based on demo speed):
    +-? Assigns a unique roadblock ID
    +-? Pushes to activeRoadblocks[] (persisted for state replay)
    +-? Auto-resolves which mission is affected:
-   ¦    +-? If 1 active mission ? trivially assigned
-   ¦    +-? If multiple ? find closest via Redis telemetry positions
+   |    +-? If 1 active mission → trivially assigned
+   |    +-? If multiple → find closest via Redis telemetry positions
    +-? Enriches payload with: mission destination + full activeRoadblocks[] array
    +-? Emits incidentEmitter('OBSTRUCTION', enrichedPayload)
 
@@ -316,7 +316,7 @@ Every GPS tick (configurable interval based on demo speed):
 
 5. Backend broadcasts ROUTE_UPDATED { mission_id, new_polyline, distance, duration }
 
-6. useGPSSimulator receives it ? decodes polyline ? switches route from current position
+6. useGPSSimulator receives it → decodes polyline → switches route from current position
    +-? Also updates routeMetaRef speed baseline for the new route geometry
 
 7. MapEngine re-draws the route on the live map
@@ -342,9 +342,9 @@ The ETA shown in the Driver HUD is **stable and monotonically decreasing**, matc
 5. When a reroute happens, Mapbox returns fresh `distance` + `duration` for the new path, and the speed baseline is updated accordingly
 
 **Display formatting (Google Maps style):**
-- `> 2 min` ? shows only `12 min` (suppresses seconds, only ticks down once per full minute of driving)
-- `= 2 min` ? shows `1m 45s` (high precision for final approach)
-- `= 0 min` ? shows `Arrived`
+- `> 2 min` → shows only `12 min` (suppresses seconds, only ticks down once per full minute of driving)
+- `= 2 min` → shows `1m 45s` (high precision for final approach)
+- `= 0 min` → shows `Arrived`
 
 ---
 
@@ -423,7 +423,7 @@ Stops TomTom polling.
 
 The `websocket-client.js` singleton routes all incoming messages to named event listeners by sniffing payload key signatures — no `type` field required for most events.
 
-### Frontend ? Backend
+### Frontend → Backend
 
 | Event | Key Signature | Payload |
 |---|---|---|
@@ -436,7 +436,7 @@ The `websocket-client.js` singleton routes all incoming messages to named event 
 | RESET_SIMULATION | `type === 'RESET_SIMULATION'` | `{ type }` |
 | STATE_REQUEST | `request_state: true` | Triggers full state replay to this client |
 
-### Backend ? Frontend
+### Backend → Frontend
 
 | Event | When | Payload |
 |---|---|---|
@@ -455,13 +455,13 @@ The `websocket-client.js` singleton routes all incoming messages to named event 
 
 ## Deployment
 
-### Backend ? Render
+### Backend → Render
 
 `render.yaml` defines a Node.js web service:
 - **Start:** `node src/be/server.js`
 - Set these env vars in the Render dashboard: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `VITE_MAPBOX_TOKEN`, `TOMTOM_API_KEY`, `FRONTEND_URL`
 
-### Frontend ? Vercel
+### Frontend → Vercel
 
 `vercel.json` proxies `/api/*` requests to the Render backend and serves the Vite SPA:
 ```json
