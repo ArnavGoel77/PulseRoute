@@ -117,6 +117,8 @@ export default function CadForm() {
         incident_coords: data.incident_coords,
         hospital_coords: data.hospital_coords,
         base_coords: data.base_coords,
+        distances: data.distances,
+        durations: data.durations,
       };
 
       wsClient.send(missionPayload);

@@ -85,3 +85,24 @@ export const driverStore = {
     return () => subscribers.delete(cb);
   }
 };
+
+// --- Global Event Listeners ---
+// Automatically manage driver states based on global simulation events
+// using dynamic import to avoid circular dependencies if any
+import('./websocket-client.js').then(({ default: wsClient }) => {
+  wsClient.on('RESET_SIMULATION', () => {
+    Array.from(drivers.keys()).forEach(id => {
+      driverStore.setAvailable(id);
+    });
+  });
+
+  wsClient.on('PHASE_CHANGE', ({ mission_id, new_phase }) => {
+    if (new_phase === 'complete') {
+      Array.from(drivers.values()).forEach(driver => {
+        if (driver.mission_id === mission_id) {
+          driverStore.setAvailable(driver.id);
+        }
+      });
+    }
+  });
+});
