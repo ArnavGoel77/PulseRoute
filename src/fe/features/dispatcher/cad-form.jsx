@@ -130,18 +130,10 @@ export default function CadForm() {
         phase: 'to_incident'
       }]);
 
-      // Listen for phase changes to update our mission log
-      wsClient.on('PHASE_CHANGE', ({ mission_id, new_phase }) => {
-        if (mission_id !== missionId) return;
-        setDispatchedMissions(prev => prev.map(m =>
-          m.id === mission_id ? { ...m, phase: new_phase, status: new_phase === 'to_base' ? 'RETURNING' : 'EN ROUTE' } : m
-        ));
-      });
-
       setMissionId(generateMissionId());
       setUnitId('');
       setOrigin('');
-      setMissionId(`M-0${Math.floor(Math.random() * 90) + 10}`);
+      setDestination('');
     } catch (err) {
       console.error(err);
       setFormError('Failed to contact backend for routing. Is the server running?');
@@ -157,7 +149,15 @@ export default function CadForm() {
     const unsubReset = wsClient.on('RESET_SIMULATION', () => {
       setDispatchedMissions([]);
     });
-    return () => unsubReset();
+    // Listen for phase changes globally to update the dispatched missions log
+    const unsubPhase = wsClient.on('PHASE_CHANGE', ({ mission_id, new_phase }) => {
+      setDispatchedMissions(prev => prev.map(m =>
+        m.id === mission_id
+          ? { ...m, phase: new_phase, status: new_phase === 'to_base' ? 'RETURNING' : 'EN ROUTE' }
+          : m
+      ));
+    });
+    return () => { unsubReset(); unsubPhase(); };
   }, []);
 
   return (

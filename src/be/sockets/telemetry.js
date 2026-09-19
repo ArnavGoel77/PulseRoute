@@ -73,22 +73,19 @@ function sendToClient(ws, payload) {
   if (ws.readyState === 1) ws.send(JSON.stringify(payload));
 }
 
+function updateMissionPolyline({ mission_id, new_polyline }) {
+  if (!mission_id || !new_polyline || !activeMissions[mission_id]) return;
+  const phase = activeMissions[mission_id].current_phase;
+  if (phase === 'to_incident') activeMissions[mission_id].leg_to_incident = new_polyline;
+  else if (phase === 'to_hospital') activeMissions[mission_id].leg_to_hospital = new_polyline;
+  else if (phase === 'to_base') activeMissions[mission_id].leg_to_base = new_polyline;
+  activeMissions[mission_id].upcomingNodes = extractNodesFromPolyline(new_polyline);
+}
+
 function initTelemetry(wss) {
-  // Bridge reroute events from anomaly detector
-  if (anomalyDetector && anomalyDetector.rerouteEmitter) {
-    anomalyDetector.rerouteEmitter.on('ROUTE_UPDATED', (payload) => {
-      const { mission_id, new_polyline } = payload;
-      if (mission_id && activeMissions[mission_id]) {
-        // Update the current phase's polyline
-        const phase = activeMissions[mission_id].current_phase;
-        if (phase === 'to_incident') activeMissions[mission_id].leg_to_incident = new_polyline;
-        else if (phase === 'to_hospital') activeMissions[mission_id].leg_to_hospital = new_polyline;
-        else if (phase === 'to_base') activeMissions[mission_id].leg_to_base = new_polyline;
-        activeMissions[mission_id].upcomingNodes = extractNodesFromPolyline(new_polyline);
-      }
-      broadcast(payload);
-    });
-  }
+  // NOTE: ROUTE_UPDATED broadcasting is handled exclusively in server.js
+  // to avoid double-sending to clients. The anomalyDetector.rerouteEmitter
+  // listener lives there, not here.
 
   wss.on('connection', (ws) => {
     allClients.add(ws);
@@ -303,4 +300,4 @@ function initTelemetry(wss) {
   });
 }
 
-module.exports = { initTelemetry };
+module.exports = { initTelemetry, updateMissionPolyline };

@@ -446,6 +446,25 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
     const unsubReset = wsClient.on('RESET_SIMULATION', () => {
       const map = mapRef.current;
       if (!map || !mapLoadedRef.current) return;
+
+      // Remove all per-mission layers, sources, and destination markers
+      for (const missionId of Object.keys(animStateRef.current)) {
+        ['amb-halo', 'amb-core', 'route-line'].forEach(prefix => {
+          const layerId = `${prefix}-${missionId}`;
+          if (map.getLayer(layerId)) map.removeLayer(layerId);
+        });
+        [`ambulance-${missionId}`, `route-${missionId}`].forEach(srcId => {
+          if (map.getSource(srcId)) map.removeSource(srcId);
+        });
+        missionMarkersRef.current[missionId]?.remove();
+      }
+      missionMarkersRef.current = {};
+      animStateRef.current = {};
+      missionIndexRef.current = {};
+      missionCountRef.current = 0;
+      missionPhaseRef.current = {};
+
+      // Clear roadblocks and intersections
       map.getSource('roadblocks')?.setData({ type: 'FeatureCollection', features: [] });
       map.getSource('intersections')?.setData({ type: 'FeatureCollection', features: [] });
       signalStateRef.current = {};
