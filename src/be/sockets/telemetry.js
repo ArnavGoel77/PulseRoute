@@ -204,7 +204,16 @@ function initTelemetry(wss) {
           }
         }
 
-        const enriched = { ...parsed, mission_id: resolvedMissionId };
+        let destination = undefined;
+        if (resolvedMissionId && activeMissions[resolvedMissionId]) {
+          const mission = activeMissions[resolvedMissionId];
+          const phase = mission.current_phase;
+          if (phase === 'to_incident') destination = mission.incident_coords;
+          else if (phase === 'to_hospital') destination = mission.hospital_coords;
+          else if (phase === 'to_base') destination = mission.base_coords;
+        }
+
+        const enriched = { ...parsed, mission_id: resolvedMissionId, destination };
         broadcast(enriched);
         if (incidentEmitter) incidentEmitter.emit('OBSTRUCTION', enriched);
         return;
