@@ -15,6 +15,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import wsClient from '../../services/websocket-client';
 import { driverStore } from '../../services/driver-store';
+import { useTheme } from '../../App';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -23,6 +24,7 @@ const TMC_ZOOM = 11.5;
 const TMC_PITCH = 45;
 const TMC_BEARING = -10;
 const DARK_MATTER_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+const POSITRON_GL_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
 // Distinct colors per mission slot (cycles if more than 6)
 const MISSION_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
@@ -94,6 +96,7 @@ function createDriverIconEl(driverId, color) {
 }
 
 export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, recenterTrigger, watchMissionId }) {
+  const { isDarkMode } = useTheme();
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const mapLoadedRef = useRef(false);
@@ -181,9 +184,24 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
 
   // Main map initialization
   useEffect(() => {
+    // If map already exists, we are toggling themes. Clean up thoroughly.
+    if (mapRef.current) {
+      mapRef.current.remove();
+      mapRef.current = null;
+      mapLoadedRef.current = false;
+      missionIndexRef.current = {};
+      missionCountRef.current = 0;
+      animStateRef.current = {};
+      // Also clear markers so they get recreated
+      Object.values(missionMarkersRef.current).forEach(m => m.remove());
+      Object.values(driverMarkersRef.current).forEach(m => m.remove());
+      missionMarkersRef.current = {};
+      driverMarkersRef.current = {};
+    }
+
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: DARK_MATTER_STYLE,
+      style: isDarkMode ? DARK_MATTER_STYLE : POSITRON_GL_STYLE,
       center: MUMBAI_CENTER,
       zoom: TMC_ZOOM,
       pitch: TMC_PITCH,
@@ -254,7 +272,7 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
         }
       });
 
-      // ── Roadblocks layer — added LAST so it's always on top ────────────────
+      // ── Roadblocks Layer ────────────────────────────────────────────────────
       map.addSource('roadblocks', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] }
@@ -264,21 +282,20 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
         type: 'circle',
         source: 'roadblocks',
         paint: {
-          'circle-radius': 10,
-          'circle-color': '#e03131',
-          'circle-stroke-width': 2.5,
-          'circle-stroke-color': '#ff8787',
-          'circle-opacity': 0.95
+          'circle-radius': 16,
+          'circle-color': '#dc2626',
+          'circle-stroke-width': 3,
+          'circle-stroke-color': '#fff',
+          'circle-opacity': 0.9,
+          'circle-pitch-alignment': 'map'
         }
       });
-
-      // Roadblock text label
       map.addLayer({
-        id: 'roadblocks-label',
+        id: 'roadblocks-icon',
         type: 'symbol',
         source: 'roadblocks',
         layout: {
-          'text-field': '⛔',
+          'text-field': '⚠️',
           'text-size': 14,
           'text-offset': [0, -2],
           'text-allow-overlap': true
@@ -529,7 +546,7 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
       Object.values(driverMarkersRef.current).forEach(m => m.remove());
       map.remove();
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isDarkMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Helpers ---
 
