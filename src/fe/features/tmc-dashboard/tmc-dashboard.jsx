@@ -261,15 +261,14 @@ export default function TmcCommandDashboard() {
             {drivers.length > 0 && (
               <div className="flex flex-col gap-1 mt-1">
                 {drivers.map(d => (
-<<<<<<< HEAD
-                  <div key={d.id} className="flex items-center justify-between bg-[#1e1e1e] border border-[#2a2a2a] rounded px-3 py-1.5 group">
-                    <span className="font-mono text-xs text-emerald-400 font-bold">{d.id}</span>
-                    <span className="font-mono text-[10px] text-[#8b8b8b]">{d.lat?.toFixed(4)}, {d.lng?.toFixed(4)}</span>
+                  <div key={d.id} className="flex items-center justify-between bg-gray-50 dark:bg-[#1e1e1e] border border-gray-300 dark:border-[#2a2a2a] rounded px-3 py-1.5 transition-colors duration-300 group">
+                    <span className="font-mono text-xs text-emerald-600 dark:text-emerald-400 font-bold">{d.id}</span>
+                    <span className="font-mono text-[10px] text-gray-500 dark:text-[#8b8b8b] transition-colors duration-300">{d.lat?.toFixed(4)}, {d.lng?.toFixed(4)}</span>
                     <div className="flex items-center gap-2">
                       <span className={`text-[10px] font-bold ${d.status === 'ON_MISSION' ? 'text-red-400' : 'text-emerald-400'}`}>
                         {d.status === 'ON_MISSION' ? '● MISSION' : '● AVAIL'}
                       </span>
-                      <button 
+                      <button
                         onClick={() => handleRemoveDriver(d.id)}
                         className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-400 font-bold ml-1 transition-opacity cursor-pointer"
                         title="Remove unit"
@@ -277,14 +276,6 @@ export default function TmcCommandDashboard() {
                         ×
                       </button>
                     </div>
-=======
-                  <div key={d.id} className="flex items-center justify-between bg-gray-50 dark:bg-[#1e1e1e] border border-gray-300 dark:border-[#2a2a2a] rounded px-3 py-1.5 transition-colors duration-300">
-                    <span className="font-mono text-xs text-emerald-600 dark:text-emerald-400 font-bold">{d.id}</span>
-                    <span className="font-mono text-[10px] text-gray-500 dark:text-[#8b8b8b] transition-colors duration-300">{d.lat?.toFixed(4)}, {d.lng?.toFixed(4)}</span>
-                    <span className={`text-[10px] font-bold ${d.status === 'ON_MISSION' ? 'text-red-400' : 'text-emerald-400'}`}>
-                      {d.status === 'ON_MISSION' ? '● MISSION' : '● AVAIL'}
-                    </span>
->>>>>>> d263dd7 (ui changes)
                   </div>
                 ))}
               </div>

@@ -96,16 +96,10 @@ function createDriverIconEl(driverId, color) {
 }
 
 export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, recenterTrigger, watchMissionId }) {
-<<<<<<< HEAD
+  const { isDarkMode } = useTheme();
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const mapLoadedRef = useRef(false);
-=======
-  const { isDarkMode } = useTheme();
-  const containerRef         = useRef(null);
-  const mapRef               = useRef(null);
-  const mapLoadedRef         = useRef(false);
->>>>>>> d263dd7 (ui changes)
 
   // Per-mission tracking
   const missionIndexRef = useRef({}); // mission_id -> color index

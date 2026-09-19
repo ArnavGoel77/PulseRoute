@@ -372,26 +372,6 @@ export default function CadForm() {
             </div>
           )}
         </aside>
-<<<<<<< HEAD
-
-        {/* Map */}
-        <main className="flex-1 relative bg-[#101010] min-h-0 overflow-hidden">
-          <div className="absolute bottom-6 left-6 z-10 bg-[#141414] border border-[#2a2a2a] rounded px-4 py-2 flex items-center space-x-3 shadow-lg pointer-events-none">
-            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping" />
-            <span className="text-xs font-semibold text-[#8b8b8b] uppercase tracking-widest">Live Map Feed — All Units</span>
-          </div>
-          {roadblockModeActive && (
-            <div className="absolute top-12 left-1/2 -translate-x-1/2 z-20 bg-red-900/80 border border-red-500 px-4 py-2 rounded text-red-300 text-xs font-semibold tracking-widest pointer-events-none">
-              ROADBLOCK MODE — CLICK MAP TO DROP INCIDENT
-            </div>
-          )}
-          <MapEngine 
-            isRoadblockModeActive={roadblockModeActive} 
-            onRoadblockPlaced={() => setRoadblockModeActive(false)} 
-          />
-        </main>
-=======
->>>>>>> d263dd7 (ui changes)
       </div>
     </div>
   );
