@@ -31,6 +31,14 @@ export const driverStore = {
     notify();
   },
 
+  /** Remove a driver from the store */
+  remove(id) {
+    if (drivers.has(id)) {
+      drivers.delete(id);
+      notify();
+    }
+  },
+
   /** Mark a driver as ON_MISSION */
   setOnMission(id, mission_id) {
     if (drivers.has(id)) {

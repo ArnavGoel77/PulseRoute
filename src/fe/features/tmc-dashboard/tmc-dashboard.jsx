@@ -24,6 +24,7 @@ export default function TmcCommandDashboard() {
     { time: '--:--:--', text: 'TMC ONLINE — AWAITING MISSIONS', dim: false },
   ]);
   const [activeMissions, setActiveMissions] = useState([]);
+  const [activeRoadblocks, setActiveRoadblocks] = useState([]);
   const [clock, setClock] = useState('');
   const [demoSpeed, setDemoSpeed] = useState(1);
   const [demoPaused, setDemoPaused] = useState(false);
@@ -71,14 +72,18 @@ export default function TmcCommandDashboard() {
     });
 
     const unsubPhase = wsClient.on('PHASE_CHANGE', ({ mission_id, new_phase }) => {
-      setActiveMissions(prev => prev.map(m =>
-        m.id === mission_id ? {
-          ...m,
-          phase: new_phase,
-          status: new_phase === 'to_base' ? 'RETURNING' : new_phase === 'to_hospital' ? 'TRANSPORTING' : 'EN ROUTE'
-        } : m
-      ));
-      const labels = { to_incident: 'EN ROUTE', to_hospital: 'TRANSPORTING PATIENT', to_base: 'RETURNING TO BASE' };
+      if (new_phase === 'complete') {
+        setActiveMissions(prev => prev.filter(m => m.id !== mission_id));
+      } else {
+        setActiveMissions(prev => prev.map(m =>
+          m.id === mission_id ? {
+            ...m,
+            phase: new_phase,
+            status: new_phase === 'to_base' ? 'RETURNING' : new_phase === 'to_hospital' ? 'TRANSPORTING' : 'EN ROUTE'
+          } : m
+        ));
+      }
+      const labels = { to_incident: 'EN ROUTE', to_hospital: 'TRANSPORTING PATIENT', to_base: 'RETURNING TO BASE', complete: 'MISSION COMPLETE' };
       addEvent(`MISSION ${mission_id} → ${labels[new_phase] || new_phase}`);
     });
 
@@ -90,9 +95,22 @@ export default function TmcCommandDashboard() {
     const unsubPreempt  = wsClient.on('SIGNAL_PREEMPT', ({ intersection_id }) => addEvent(`SIG ${intersection_id} → GREEN PREEMPTED`));
     const unsubRelease  = wsClient.on('SIGNAL_RELEASE', ({ intersection_id }) => addEvent(`SIG ${intersection_id} → ALL RED CLEARED`, true));
 
-    const unsubIncident = wsClient.on('INCIDENT_LOGGED', ({ lat, lng }) => {
-      addEvent(`INCIDENT @ ${lat?.toFixed(4)}, ${lng?.toFixed(4)} — REROUTING`);
+    const unsubIncident = wsClient.on('INCIDENT_LOGGED', (rb) => {
+      addEvent(`INCIDENT @ ${rb.lat?.toFixed(4)}, ${rb.lng?.toFixed(4)} — REROUTING`);
       setActiveMissions(prev => prev.map(m => ({ ...m, status: 'REROUTING' })));
+      setActiveRoadblocks(prev => {
+        if (prev.find(r => r.id === rb.id)) return prev;
+        return [...prev, rb];
+      });
+    });
+
+    const unsubRemoveObstruction = wsClient.on('REMOVE_OBSTRUCTION', ({ id }) => {
+      setActiveRoadblocks(prev => prev.filter(rb => rb.id !== id));
+      addEvent(`ROADBLOCK REMOVED`);
+    });
+
+    const unsubRemoveDriver = wsClient.on('REMOVE_DRIVER', ({ driver_id }) => {
+      addEvent(`UNIT ${driver_id} REMOVED`);
     });
 
     const unsubRoute = wsClient.on('ROUTE_UPDATED', ({ mission_id }) => {
@@ -108,7 +126,7 @@ export default function TmcCommandDashboard() {
     return () => {
       unsubConn(); unsubDisconn(); unsubMission(); unsubPhase();
       unsubTelemetry(); unsubPreempt(); unsubRelease(); unsubIncident();
-      unsubRoute(); unsubDriver();
+      unsubRemoveObstruction(); unsubRoute(); unsubDriver(); unsubRemoveDriver();
     };
   }, []);
 
@@ -145,6 +163,14 @@ export default function TmcCommandDashboard() {
     const nextPaused = !demoPaused;
     setDemoPaused(nextPaused);
     wsClient.send({ speedMult: demoSpeed, paused: nextPaused });
+  };
+
+  const handleRemoveDriver = (driver_id) => {
+    wsClient.send({ type: 'REMOVE_DRIVER', driver_id });
+  };
+
+  const handleRemoveRoadblock = (id) => {
+    wsClient.send({ type: 'REMOVE_OBSTRUCTION', id });
   };
 
   const PHASE_COLORS = {
@@ -235,12 +261,21 @@ export default function TmcCommandDashboard() {
             {drivers.length > 0 && (
               <div className="flex flex-col gap-1 mt-1">
                 {drivers.map(d => (
-                  <div key={d.id} className="flex items-center justify-between bg-[#1e1e1e] border border-[#2a2a2a] rounded px-3 py-1.5">
+                  <div key={d.id} className="flex items-center justify-between bg-[#1e1e1e] border border-[#2a2a2a] rounded px-3 py-1.5 group">
                     <span className="font-mono text-xs text-emerald-400 font-bold">{d.id}</span>
                     <span className="font-mono text-[10px] text-[#8b8b8b]">{d.lat?.toFixed(4)}, {d.lng?.toFixed(4)}</span>
-                    <span className={`text-[10px] font-bold ${d.status === 'ON_MISSION' ? 'text-red-400' : 'text-emerald-400'}`}>
-                      {d.status === 'ON_MISSION' ? '● MISSION' : '● AVAIL'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-bold ${d.status === 'ON_MISSION' ? 'text-red-400' : 'text-emerald-400'}`}>
+                        {d.status === 'ON_MISSION' ? '● MISSION' : '● AVAIL'}
+                      </span>
+                      <button 
+                        onClick={() => handleRemoveDriver(d.id)}
+                        className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-400 font-bold ml-1 transition-opacity cursor-pointer"
+                        title="Remove unit"
+                      >
+                        ×
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -326,6 +361,30 @@ export default function TmcCommandDashboard() {
               </button>
             </div>
           </div>
+
+          {/* ── Active Roadblocks ── */}
+          {activeRoadblocks.length > 0 && (
+            <div className="flex flex-col gap-2 shrink-0">
+              <p className="font-semibold text-[11px] text-[#8b8b8b] tracking-[1.32px] uppercase">Active Roadblocks</p>
+              <div className="bg-[#2a2a2a] h-px w-full" />
+              <div className="flex flex-col gap-1">
+                {activeRoadblocks.map((rb, i) => (
+                  <div key={rb.id || i} className="flex items-center justify-between border border-[#2a2a2a] px-3 py-1.5 w-full rounded bg-[#1e1e1e] group">
+                    <span className="font-mono text-[11px] text-red-400 font-bold">
+                      {rb.lat?.toFixed(4)}, {rb.lng?.toFixed(4)}
+                    </span>
+                    <button 
+                      onClick={() => handleRemoveRoadblock(rb.id)}
+                      className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-400 font-bold px-1 transition-opacity cursor-pointer text-sm"
+                      title="Remove roadblock"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
         </div>
 
