@@ -36,6 +36,8 @@ export default function CadForm() {
   const [dispatchedMissions, setDispatchedMissions] = useState([]);
   const [drivers, setDrivers]           = useState([]);
   const [closestDriver, setClosestDriver] = useState(null);
+  const [roadblockModeActive, setRoadblockModeActive] = useState(false);
+  const [activeRoadblocks, setActiveRoadblocks] = useState([]);
 
   // Subscribe to driver store
   useEffect(() => {
@@ -145,6 +147,10 @@ export default function CadForm() {
     wsClient.send({ type: 'RESET_SIMULATION' });
   };
 
+  const handleRemoveRoadblock = (id) => {
+    wsClient.send({ type: 'REMOVE_OBSTRUCTION', id });
+  };
+
   useEffect(() => {
     const unsubReset = wsClient.on('RESET_SIMULATION', () => {
       setDispatchedMissions([]);
@@ -161,7 +167,19 @@ export default function CadForm() {
         ));
       }
     });
-    return () => { unsubReset(); unsubPhase(); };
+
+    const unsubIncident = wsClient.on('INCIDENT_LOGGED', (rb) => {
+      setActiveRoadblocks(prev => {
+        if (prev.find(r => r.id === rb.id)) return prev;
+        return [...prev, rb];
+      });
+    });
+
+    const unsubRemoveObstruction = wsClient.on('REMOVE_OBSTRUCTION', ({ id }) => {
+      setActiveRoadblocks(prev => prev.filter(rb => rb.id !== id));
+    });
+
+    return () => { unsubReset(); unsubPhase(); unsubIncident(); unsubRemoveObstruction(); };
   }, []);
 
   return (
@@ -279,6 +297,11 @@ export default function CadForm() {
                   className="w-full bg-red-900/30 hover:bg-red-900/60 border border-red-700 text-red-400 font-bold py-3 rounded transition-colors">
                   STOP / RESET SIMULATION
                 </button>
+                <button type="button" onClick={() => setRoadblockModeActive(!roadblockModeActive)}
+                  className={`w-full border font-bold py-3 rounded transition-colors flex items-center justify-between px-4 ${roadblockModeActive ? 'bg-red-900/60 border-red-500 text-red-300 animate-pulse' : 'bg-[#272727] hover:bg-[#333] border-[#2a2a2a] text-[#f5f5f5]'}`}>
+                  <span>{roadblockModeActive ? 'CANCEL ROADBLOCK' : 'DROP ROADBLOCK'}</span>
+                  <span className="font-mono text-xs">{roadblockModeActive ? '[ × ]' : '[ + ]'}</span>
+                </button>
               </div>
             </form>
           </div>
@@ -305,6 +328,28 @@ export default function CadForm() {
               </div>
             )}
           </div>
+
+          {/* Active Roadblocks Log */}
+          {activeRoadblocks.length > 0 && (
+            <div className="border-t border-[#2a2a2a] bg-[#1a1a1a] shrink-0 h-32 overflow-y-auto p-4">
+              <p className="text-[#8b8b8b] text-xs font-semibold tracking-widest mb-3 uppercase">Active Roadblocks</p>
+              <div className="flex flex-col gap-2">
+                {activeRoadblocks.map((rb, i) => (
+                  <div key={rb.id || i} className="flex justify-between items-center border border-[#2a2a2a] p-2 rounded bg-[#141414] group">
+                    <span className="font-mono text-red-400 text-sm font-bold">{rb.lat?.toFixed(4)}, {rb.lng?.toFixed(4)}</span>
+                    <button 
+                      type="button"
+                      onClick={() => handleRemoveRoadblock(rb.id)}
+                      className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-400 font-bold px-2 transition-opacity cursor-pointer text-sm"
+                      title="Remove roadblock"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </aside>
 
         {/* Map */}
@@ -313,7 +358,15 @@ export default function CadForm() {
             <div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping" />
             <span className="text-xs font-semibold text-[#8b8b8b] uppercase tracking-widest">Live Map Feed — All Units</span>
           </div>
-          <MapEngine isRoadblockModeActive={false} />
+          {roadblockModeActive && (
+            <div className="absolute top-12 left-1/2 -translate-x-1/2 z-20 bg-red-900/80 border border-red-500 px-4 py-2 rounded text-red-300 text-xs font-semibold tracking-widest pointer-events-none">
+              ROADBLOCK MODE — CLICK MAP TO DROP INCIDENT
+            </div>
+          )}
+          <MapEngine 
+            isRoadblockModeActive={roadblockModeActive} 
+            onRoadblockPlaced={() => setRoadblockModeActive(false)} 
+          />
         </main>
       </div>
     </div>

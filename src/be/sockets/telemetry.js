@@ -58,9 +58,9 @@ const registeredDrivers = {};
 
 /**
  * activeRoadblocks stores all obstruction positions for replay to new clients.
- * Format: [{ lat, lng, type: 'OBSTRUCTION' }]
+ * Format: [{ id, lat, lng, type: 'OBSTRUCTION' }]
  */
-const activeRoadblocks = [];
+let activeRoadblocks = [];
 
 function broadcast(payload) {
   const message = JSON.stringify(payload);
@@ -176,8 +176,9 @@ function initTelemetry(wss) {
 
       // ── INCIDENT_LOGGED: { lat, lng, type: 'OBSTRUCTION', mission_id }
       if (parsed.type === 'OBSTRUCTION') {
+        const roadblockId = parsed.id || `rb-${Date.now()}`;
         // Store the roadblock so new/reconnecting clients see it
-        activeRoadblocks.push({ lat: parsed.lat, lng: parsed.lng, type: 'OBSTRUCTION' });
+        activeRoadblocks.push({ id: roadblockId, lat: parsed.lat, lng: parsed.lng, type: 'OBSTRUCTION' });
 
         // If no mission_id supplied (e.g. TMC map click), find the closest active mission
         // by comparing to each mission's last known telemetry position in Redis.
@@ -204,9 +205,34 @@ function initTelemetry(wss) {
           }
         }
 
-        const enriched = { ...parsed, mission_id: resolvedMissionId };
+        let destination = undefined;
+        if (resolvedMissionId && activeMissions[resolvedMissionId]) {
+          const mission = activeMissions[resolvedMissionId];
+          const phase = mission.current_phase;
+          if (phase === 'to_incident') destination = mission.incident_coords;
+          else if (phase === 'to_hospital') destination = mission.hospital_coords;
+          else if (phase === 'to_base') destination = mission.base_coords;
+        }
+
+        const enriched = { ...parsed, id: roadblockId, mission_id: resolvedMissionId, destination };
         broadcast(enriched);
         if (incidentEmitter) incidentEmitter.emit('OBSTRUCTION', enriched);
+        return;
+      }
+
+      // ── REMOVE_OBSTRUCTION: { id, type: 'REMOVE_OBSTRUCTION' }
+      if (parsed.type === 'REMOVE_OBSTRUCTION') {
+        activeRoadblocks = activeRoadblocks.filter(rb => rb.id !== parsed.id);
+        broadcast(parsed);
+        // We could also emit to the anomaly detector if we want to cancel reroutes,
+        // but for now just removing it from the map is enough.
+        return;
+      }
+
+      // ── REMOVE_DRIVER: { driver_id, type: 'REMOVE_DRIVER' }
+      if (parsed.type === 'REMOVE_DRIVER') {
+        delete registeredDrivers[parsed.driver_id];
+        broadcast(parsed);
         return;
       }
 

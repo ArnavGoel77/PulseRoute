@@ -128,6 +128,14 @@ class WebSocketClient {
     if (payload.type === 'OBSTRUCTION') {
       return this._emit('INCIDENT_LOGGED', payload);
     }
+    // REMOVE_OBSTRUCTION
+    if (payload.type === 'REMOVE_OBSTRUCTION') {
+      return this._emit('REMOVE_OBSTRUCTION', payload);
+    }
+    // REMOVE_DRIVER
+    if (payload.type === 'REMOVE_DRIVER') {
+      return this._emit('REMOVE_DRIVER', payload);
+    }
     // DEMO_SPEED_CONTROL
     if (payload.speedMult !== undefined) {
       return this._emit('DEMO_SPEED_CONTROL', payload);

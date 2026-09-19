@@ -19,9 +19,9 @@ import { driverStore } from '../../services/driver-store';
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
 const MUMBAI_CENTER = [72.8777, 19.0176];
-const TMC_ZOOM     = 11.5;
-const TMC_PITCH    = 45;
-const TMC_BEARING  = -10;
+const TMC_ZOOM = 11.5;
+const TMC_PITCH = 45;
+const TMC_BEARING = -10;
 const DARK_MATTER_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
 // Distinct colors per mission slot (cycles if more than 6)
@@ -94,28 +94,28 @@ function createDriverIconEl(driverId, color) {
 }
 
 export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, recenterTrigger, watchMissionId }) {
-  const containerRef         = useRef(null);
-  const mapRef               = useRef(null);
-  const mapLoadedRef         = useRef(false);
+  const containerRef = useRef(null);
+  const mapRef = useRef(null);
+  const mapLoadedRef = useRef(false);
 
   // Per-mission tracking
-  const missionIndexRef      = useRef({}); // mission_id -> color index
-  const missionCountRef      = useRef(0);
-  const missionPhaseRef      = useRef({}); // mission_id -> current_phase
-  const missionMarkersRef    = useRef({}); // mission_id -> mapboxgl.Marker (destination pin)
-  const animStateRef         = useRef({}); // mission_id -> { prev, target, lastTime }
-  const nodesFeaturesRef     = useRef({}); // mission_id -> features array
+  const missionIndexRef = useRef({}); // mission_id -> color index
+  const missionCountRef = useRef(0);
+  const missionPhaseRef = useRef({}); // mission_id -> current_phase
+  const missionMarkersRef = useRef({}); // mission_id -> mapboxgl.Marker (destination pin)
+  const animStateRef = useRef({}); // mission_id -> { prev, target, lastTime }
+  const nodesFeaturesRef = useRef({}); // mission_id -> features array
 
   // Signal state
-  const signalStateRef       = useRef({});
-  const orangeTimersRef      = useRef({});
-  const flashTimerRef        = useRef(null);
+  const signalStateRef = useRef({});
+  const orangeTimersRef = useRef({});
+  const flashTimerRef = useRef(null);
 
   // Driver markers
-  const driverMarkersRef     = useRef({}); // driver_id -> mapboxgl.Marker
+  const driverMarkersRef = useRef({}); // driver_id -> mapboxgl.Marker
 
   // Roadblock mode ref
-  const roadblockActiveRef   = useRef(isRoadblockModeActive);
+  const roadblockActiveRef = useRef(isRoadblockModeActive);
   useEffect(() => { roadblockActiveRef.current = isRoadblockModeActive; }, [isRoadblockModeActive]);
 
   // Recenter effect
@@ -356,7 +356,7 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
       // Draw route for current phase
       const activeLeg = current_phase === 'to_hospital' ? payload.leg_to_hospital
         : current_phase === 'to_base' ? payload.leg_to_base
-        : leg_to_incident;
+          : leg_to_incident;
 
       if (activeLeg) {
         const coords = decodePolyline(activeLeg);
@@ -386,7 +386,7 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
     const unsubPhase = wsClient.on('PHASE_CHANGE', ({ mission_id, new_phase }) => {
       if (!mapRef.current || !mapLoadedRef.current) return;
       missionPhaseRef.current[mission_id] = new_phase;
-      
+
       if (new_phase === 'complete') {
         const map = mapRef.current;
         ['amb-halo', 'amb-core', 'route-line'].forEach(prefix => {
@@ -426,14 +426,23 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
 
     // DESTINATION_UPDATED is no longer needed since we show both pins from the start.
 
-    const unsubIncident = wsClient.on('INCIDENT_LOGGED', ({ lat, lng }) => {
+    const unsubIncident = wsClient.on('INCIDENT_LOGGED', ({ id, lat, lng }) => {
       const map = mapRef.current;
       if (!map || !mapLoadedRef.current) return;
       const existing = map.getSource('roadblocks')?._data;
       const newFeatures = [
         ...(existing?.features || []),
-        { type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] } }
+        { type: 'Feature', properties: { id }, geometry: { type: 'Point', coordinates: [lng, lat] } }
       ];
+      map.getSource('roadblocks')?.setData({ type: 'FeatureCollection', features: newFeatures });
+    });
+
+    const unsubRemoveObstruction = wsClient.on('REMOVE_OBSTRUCTION', ({ id }) => {
+      const map = mapRef.current;
+      if (!map || !mapLoadedRef.current) return;
+      const existing = map.getSource('roadblocks')?._data;
+      if (!existing || !existing.features) return;
+      const newFeatures = existing.features.filter(f => f.properties?.id !== id);
       map.getSource('roadblocks')?.setData({ type: 'FeatureCollection', features: newFeatures });
     });
 
@@ -493,6 +502,14 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
       _upsertDriverMarker(driver_id, [lng, lat], mapRef.current);
     });
 
+    const unsubRemoveDriver = wsClient.on('REMOVE_DRIVER', ({ driver_id }) => {
+      driverStore.remove(driver_id);
+      if (driverMarkersRef.current[driver_id]) {
+        driverMarkersRef.current[driver_id].remove();
+        delete driverMarkersRef.current[driver_id];
+      }
+    });
+
     // Sync driver markers from store on mount
     const unsubStore = driverStore.subscribe((allDrivers) => {
       if (!mapRef.current || !mapLoadedRef.current) return;
@@ -503,7 +520,7 @@ export default function MapEngine({ isRoadblockModeActive, onRoadblockPlaced, re
 
     return () => {
       unsubMission(); unsubPhase(); unsubTelemetry(); unsubRoute();
-      unsubIncident(); unsubPreempt(); unsubRelease(); unsubDriver();
+      unsubIncident(); unsubRemoveObstruction(); unsubPreempt(); unsubRelease(); unsubDriver(); unsubRemoveDriver();
       unsubStore();
       clearInterval(flashTimerRef.current);
       nodesFeaturesRef.current = {};
@@ -596,7 +613,7 @@ function _applySignalFilters(map, signalState) {
     else if (phase === 'GREEN') greenIds.push(id);
     else if (phase === 'RELEASING') orangeIds.push(id);
   });
-  if (map.getLayer('intersections-red'))    map.setFilter('intersections-red',    makeIdFilter(redIds));
-  if (map.getLayer('intersections-green'))  map.setFilter('intersections-green',  makeIdFilter(greenIds));
+  if (map.getLayer('intersections-red')) map.setFilter('intersections-red', makeIdFilter(redIds));
+  if (map.getLayer('intersections-green')) map.setFilter('intersections-green', makeIdFilter(greenIds));
   if (map.getLayer('intersections-orange')) map.setFilter('intersections-orange', makeIdFilter(orangeIds));
 }

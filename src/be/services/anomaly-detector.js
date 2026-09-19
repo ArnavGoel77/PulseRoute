@@ -25,48 +25,12 @@ incidentEmitter.on('OBSTRUCTION', async (payload) => {
   if (telemetry && telemetry.lat) {
     const current_location = { lat: parseFloat(telemetry.lat), lng: parseFloat(telemetry.lng) };
     
-    // Extract the actual destination from the active mission telemetry / OSRM cache!
+    // Extract the actual destination from the active mission telemetry (passed by telemetry.js)
     let destination = payload.destination;
-    
-    if (!destination) {
-      try {
-        const { redis } = require('./redis-client');
-        const keys = await redis.keys('osrm_route:*');
-        if (keys && keys.length > 0) {
-          let closestDist = Infinity;
-          let bestDest = null;
-          
-          for (const key of keys) {
-            const parts = key.split(':');
-            if (parts.length === 3 || parts.length === 5) {
-              const isFourPoint = parts.length === 5;
-              const startParts = isFourPoint ? parts[2].split(',') : parts[1].split(',');
-              const destParts = isFourPoint ? parts[3].split(',') : parts[2].split(',');
-              
-              const sLat = parseFloat(startParts[0]);
-              const sLng = parseFloat(startParts[1]);
-              
-              const startPt = turf.point([sLng, sLat]);
-              const currentPt = turf.point([current_location.lng, current_location.lat]);
-              
-              const dist = turf.distance(startPt, currentPt);
-              if (dist < closestDist) {
-                closestDist = dist;
-                bestDest = { lat: parseFloat(destParts[0]), lng: parseFloat(destParts[1]) };
-              }
-            }
-          }
-          if (bestDest) {
-            destination = bestDest;
-          }
-        }
-      } catch (e) {
-        console.warn('Failed to extract destination from Redis cache:', e.message);
-      }
-    }
     
     // Fallback to a central Mumbai location if extraction entirely fails
     if (!destination) {
+      console.warn(`[Anomaly Detector] Missing destination in payload for mission ${payload.mission_id}, using fallback.`);
       destination = { lat: 19.0760, lng: 72.8777 }; 
     }
     
