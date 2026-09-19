@@ -219,7 +219,10 @@ export default function CadForm() {
             <div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping shrink-0" />
             <span className="text-xs font-bold text-gray-600 dark:text-[#8b8b8b] uppercase tracking-widest whitespace-nowrap">Live Map Feed — All Units</span>
           </div>
-          <MapEngine isRoadblockModeActive={false} />
+          <MapEngine 
+            isRoadblockModeActive={roadblockModeActive}
+            onRoadblockPlaced={() => setRoadblockModeActive(false)}
+          />
         </main>
 
         {/* Sidebar */}
