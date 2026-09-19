@@ -221,36 +221,36 @@ All three views share the same WebSocket connection singleton and `driverStore` 
 
 ```
 1. REGISTER DRIVER (TMC Dashboard)
-   +-? Fill in driver ID (e.g., AMB-1) + lat/lng → click Register
-       +-? Sends { driver_id, lat, lng } via WS
-           +-? Backend stores in registeredDrivers{}; broadcasts DRIVER_REGISTERED
+   +-> Fill in driver ID (e.g., AMB-1) + lat/lng → click Register
+       +-> Sends { driver_id, lat, lng } via WS
+           +-> Backend stores in registeredDrivers{}; broadcasts DRIVER_REGISTERED
 
 2. DISPATCH MISSION (Dispatcher CAD)
-   +-? Enter incident + hospital coordinates → pick unit → Start Mission
-       +-? Frontend calls GET /api/route/legs (3 OSRM requests in parallel)
-           +-? Returns 3 encoded polylines + distances + durations for each leg
-               +-? Frontend sends MISSION_START payload via WS
-                   +-? Backend stores in activeMissions{}; broadcasts to all clients
+   +-> Enter incident + hospital coordinates → pick unit → Start Mission
+       +-> Frontend calls GET /api/route/legs (3 OSRM requests in parallel)
+           +-> Returns 3 encoded polylines + distances + durations for each leg
+               +-> Frontend sends MISSION_START payload via WS
+                   +-> Backend stores in activeMissions{}; broadcasts to all clients
 
 3. GPS SIMULATION (Driver HUD — useGPSSimulator hook)
-   +-? Traverses leg_to_incident polyline point-by-point on setInterval
-       +-? Emits TELEMETRY_UPDATE { mission_id, lat, lng, speed } each tick
-           +-? Backend writes to Redis hash `mission:id:location` (60s TTL)
-               +-? Calls processTelemetryUpdate() → checks proximity to intersection nodes
-               |    +-? ETA = 10s → broadcast SIGNAL_PREEMPT (phase: GREEN)
-               |    +-? Passed node → broadcast SIGNAL_RELEASE (phase: ALL_RED)
-               +-? Broadcasts TELEMETRY_UPDATE to all clients (map updates)
+   +-> Traverses leg_to_incident polyline point-by-point on setInterval
+       +-> Emits TELEMETRY_UPDATE { mission_id, lat, lng, speed } each tick
+           +-> Backend writes to Redis hash `mission:id:location` (60s TTL)
+               +-> Calls processTelemetryUpdate() → checks proximity to intersection nodes
+               |    +-> ETA = 10s → broadcast SIGNAL_PREEMPT (phase: GREEN)
+               |    +-> Passed node → broadcast SIGNAL_RELEASE (phase: ALL_RED)
+               +-> Broadcasts TELEMETRY_UPDATE to all clients (map updates)
 
 4. PHASE TRANSITIONS (auto, driven by GPS simulator)
-   +-? End of leg_to_incident → 2s delay → switchToPhase('to_hospital')
-   +-? End of leg_to_hospital → teleport ambulance back to base coords
-   |    +-? Send PHASE_CHANGE: complete → backend deletes activeMissions[id]
-   +-? Driver freed: driverStore.setAvailable(driverId) called globally
+   +-> End of leg_to_incident → 2s delay → switchToPhase('to_hospital')
+   +-> End of leg_to_hospital → teleport ambulance back to base coords
+   |    +-> Send PHASE_CHANGE: complete → backend deletes activeMissions[id]
+   +-> Driver freed: driverStore.setAvailable(driverId) called globally
 
 5. RESET (Dispatcher CAD → STOP/RESET button)
-   +-? Sends RESET_SIMULATION via WS
-       +-? Backend clears all activeMissions{}
-           +-? driverStore auto-releases all ON_MISSION drivers
+   +-> Sends RESET_SIMULATION via WS
+       +-> Backend clears all activeMissions{}
+           +-> driverStore auto-releases all ON_MISSION drivers
 ```
 
 ---
@@ -294,19 +294,19 @@ Every GPS tick (configurable interval based on demo speed):
 1. Frontend sends { type: 'OBSTRUCTION', lat, lng } via WS
 
 2. Backend (telemetry.js):
-   +-? Assigns a unique roadblock ID
-   +-? Pushes to activeRoadblocks[] (persisted for state replay)
-   +-? Auto-resolves which mission is affected:
-   |    +-? If 1 active mission → trivially assigned
-   |    +-? If multiple → find closest via Redis telemetry positions
-   +-? Enriches payload with: mission destination + full activeRoadblocks[] array
-   +-? Emits incidentEmitter('OBSTRUCTION', enrichedPayload)
+   +-> Assigns a unique roadblock ID
+   +-> Pushes to activeRoadblocks[] (persisted for state replay)
+   +-> Auto-resolves which mission is affected:
+   |    +-> If 1 active mission → trivially assigned
+   |    +-> If multiple → find closest via Redis telemetry positions
+   +-> Enriches payload with: mission destination + full activeRoadblocks[] array
+   +-> Emits incidentEmitter('OBSTRUCTION', enrichedPayload)
 
 3. anomaly-detector.js triggerReroute():
-   +-? Reads current vehicle position from Redis
-   +-? Reads destination from mission state (changes per phase: incident / hospital / base)
-   +-? Constructs Mapbox exclude param: "point(lng lat)" for EVERY active roadblock
-   +-? Calls Mapbox Directions API v5:
+   +-> Reads current vehicle position from Redis
+   +-> Reads destination from mission state (changes per phase: incident / hospital / base)
+   +-> Constructs Mapbox exclude param: "point(lng lat)" for EVERY active roadblock
+   +-> Calls Mapbox Directions API v5:
        https://api.mapbox.com/directions/v5/mapbox/driving-traffic/
        {current_lng},{current_lat};{dest_lng},{dest_lat}
        ?overview=full&geometries=polyline&exclude=point(rb1_lng rb1_lat),point(rb2_lng rb2_lat)
@@ -317,7 +317,7 @@ Every GPS tick (configurable interval based on demo speed):
 5. Backend broadcasts ROUTE_UPDATED { mission_id, new_polyline, distance, duration }
 
 6. useGPSSimulator receives it → decodes polyline → switches route from current position
-   +-? Also updates routeMetaRef speed baseline for the new route geometry
+   +-> Also updates routeMetaRef speed baseline for the new route geometry
 
 7. MapEngine re-draws the route on the live map
 ```
