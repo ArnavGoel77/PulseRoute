@@ -238,14 +238,14 @@ export default function TmcCommandDashboard() {
                   value={driverLat}
                   onChange={e => setDriverLat(e.target.value)}
                   placeholder="Latitude"
-                  className="flex-1 bg-gray-50 dark:bg-[#1e1e1e] border border-gray-300 dark:border-[#333] rounded px-3 py-2 text-xs font-mono focus:outline-none focus:border-emerald-500 transition-colors duration-300"
+                  className="flex-1 min-w-0 bg-gray-50 dark:bg-[#1e1e1e] border border-gray-300 dark:border-[#333] rounded px-3 py-2 text-xs font-mono focus:outline-none focus:border-emerald-500 transition-colors duration-300"
                 />
                 <input
                   type="text"
                   value={driverLng}
                   onChange={e => setDriverLng(e.target.value)}
                   placeholder="Longitude"
-                  className="flex-1 bg-gray-50 dark:bg-[#1e1e1e] border border-gray-300 dark:border-[#333] rounded px-3 py-2 text-xs font-mono focus:outline-none focus:border-emerald-500 transition-colors duration-300"
+                  className="flex-1 min-w-0 bg-gray-50 dark:bg-[#1e1e1e] border border-gray-300 dark:border-[#333] rounded px-3 py-2 text-xs font-mono focus:outline-none focus:border-emerald-500 transition-colors duration-300"
                 />
               </div>
               {driverError && <p className="text-red-400 text-[11px]">{driverError}</p>}
